@@ -48,6 +48,13 @@ Resources:
         Fn::Base64: !Sub |
           #!/bin/bash
           set -x
+          LOG_FILE="/var/log/$(date +'%Y%m%d%H%M%S')_UserData_Script_output.log"
+          #mkdir -p /var/log
+          touch $LOG_FILE
+          exec 1>$LOG_FILE
+          exec 2>&1
+          chmod 777 $LOG_FILE
+          echo "logging output to $LOG_FILE"
           i=0;
           echo "kampli - $((i++)) - start"
           echo "kampli - $((i++)) - after log"
