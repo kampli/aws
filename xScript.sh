@@ -1,5 +1,8 @@
 #!/bin/bash
 
+export AWS_PROFILE=kamplidev
+
+
 function listFunctions() {
 
     grep function $0 | egrep -v "listFunctions|^ *#" | sed 's/ *function //g' | sed 's/(.*//g' | sed 's/ .*//g' | sort
@@ -24,6 +27,7 @@ function updateFilesToRepo() {
 }
 
 function createStack() {
+    echo "AWS_PROFILE == ${AWS_PROFILE}"
     aws cloudformation update-stack \
         --stack-name lamp-stack \
         --template-body file://aws_CF_LAMP_Template.yaml \
@@ -31,6 +35,7 @@ function createStack() {
 }
 
 function updateStack() {
+    echo "AWS_PROFILE == ${AWS_PROFILE}"
     aws cloudformation update-stack \
         --stack-name lamp-stack \
         --template-body file://aws_CF_LAMP_Template.yaml \
@@ -38,6 +43,7 @@ function updateStack() {
 }
 
 function deleteStack() {
+    echo "AWS_PROFILE == ${AWS_PROFILE}"
     aws cloudformation delete-stack \
         --stack-name lamp-stack
 }
