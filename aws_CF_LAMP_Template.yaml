@@ -99,17 +99,19 @@ Resources:
           # mysql_secure_installation --password=kampli00
           sslConfFile=/etc/httpd/conf.d/ssl.conf
           sed -r 's/^SSLCertificateFile \/etc\/pki\/tls\/certs\/localhost.crt/\#SSLCertificateFile \/etc\/pki\/tls\/certs\/localhost.crt\nSSLCertificateFile \/etc\/pki\/tls\/certs\/apache-selfsigned.crt/g' \
-                      ${sslConfFile} | grep SSLCertificateFile
+                      $sslConfFile | grep SSLCertificateFile
 
           sed -i -r 's/^SSLCertificateFile \/etc\/pki\/tls\/certs\/localhost.crt/\#SSLCertificateFile \/etc\/pki\/tls\/certs\/localhost.crt\nSSLCertificateFile \/etc\/pki\/tls\/certs\/apache-selfsigned.crt/g' \
-                      ${sslConfFile} | grep SSLCertificateFile
+                      $sslConfFile | grep SSLCertificateFile
 
-          grep SSLCertificateFile ${sslConfFile}
+          grep SSLCertificateFile $sslConfFile
+
+          sslConfFile=/etc/httpd/conf.d/ssl.conf
           sed -r 's/^SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key/\#SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key\nSSLCertificateKeyFile \/etc\/pki\/tls\/private\/apache-selfsigned.key/g' \
-            ${sslConfFile} | grep SSLCertificateKeyFile
-          sed -i -r 's/^SSLCertificateKeyFile \/etc\/pki\/tls\/pr   ivate\/localhost.key/\#SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key\nSSLCertificateKeyFile \/etc\/pki\/tls\/private\/apache-selfsigned.key/g' \
-            ${sslConfFile} | grep SSLCertificateKeyFile
-          grep SSLCertificateKeyFile ${sslConfFile}
+            $sslConfFile | grep SSLCertificateKeyFile
+          sed -i -r 's/^SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key/\#SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key\nSSLCertificateKeyFile \/etc\/pki\/tls\/private\/apache-selfsigned.key/g' \
+            $sslConfFile | grep SSLCertificateKeyFile
+          grep SSLCertificateKeyFile $sslConfFile
 
 Outputs:
   InstancePublicIP:
