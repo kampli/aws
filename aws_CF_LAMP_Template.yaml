@@ -91,6 +91,9 @@ Resources:
           ?>
           EOF
 
+          until mysqladmin ping --silent; do
+             sleep 2
+          done
           mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${DBRootPassword}'; FLUSH PRIVILEGES;"
           mysql -u root --password=${DBRootPassword} -e "
           DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
