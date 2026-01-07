@@ -92,7 +92,7 @@ aws cloudformation delete-stack \
 
 
 chmod 600 testkeypair.pem
-ls -l testkeypair.pem 
+ls -l testkeypair.pem
 cd /Users/kampli/workspace/Barclays/20260105_AWS_LampServer/aws
 ssh -o StrictHostKeyChecking=accept-new -i ./testkeypair.pem ec2-user@13.40.126.5
 
@@ -101,6 +101,10 @@ cd /etc/httpd/conf.d/
 grep SSLCert /etc/httpd/conf.d/ssl.conf
 
 
+aws cloudformation describe-stacks \
+  --stack-name lamp-stack \
+  --query "Stacks[0].Outputs[?OutputKey=='InstancePublicIP'].OutputValue" \
+  --output text
 
 https://docs.aws.amazon.com/linux/al2023/ug/hosting-wordpress-aml-2023.html
 

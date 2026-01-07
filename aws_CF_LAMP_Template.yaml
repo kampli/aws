@@ -108,10 +108,11 @@ Resources:
 
           sslConfFile=/etc/httpd/conf.d/ssl.conf
           sed -r 's/^SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key/\#SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key\nSSLCertificateKeyFile \/etc\/pki\/tls\/private\/apache-selfsigned.key/g' \
-            $sslConfFile | grep SSLCertificateKeyFile
+                      $sslConfFile | grep SSLCertificateKeyFile
           sed -i -r 's/^SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key/\#SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key\nSSLCertificateKeyFile \/etc\/pki\/tls\/private\/apache-selfsigned.key/g' \
-            $sslConfFile | grep SSLCertificateKeyFile
+                      $sslConfFile | grep SSLCertificateKeyFile
           grep SSLCertificateKeyFile $sslConfFile
+          systemctl restart httpd
 
 Outputs:
   InstancePublicIP:
