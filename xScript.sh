@@ -31,7 +31,8 @@ function createStack() {
     aws cloudformation create-stack \
         --stack-name lamp-stack \
         --template-body file://aws_CF_LAMP_Template.yaml \
-        --parameters ParameterKey=KeyName,ParameterValue=testkeypair
+        --parameters ParameterKey=KeyName,ParameterValue=testkeypair \
+                     ParameterKey=DBRootPassword,ParameterValue=kampli00
 }
 
 function updateStack() {
@@ -39,7 +40,8 @@ function updateStack() {
     aws cloudformation update-stack \
         --stack-name lamp-stack \
         --template-body file://aws_CF_LAMP_Template.yaml \
-        --parameters ParameterKey=KeyName,ParameterValue=testkeypair
+        --parameters ParameterKey=KeyName,ParameterValue=testkeypair \
+                     ParameterKey=DBRootPassword,ParameterValue=kampli00
 }
 
 function deleteStack() {
