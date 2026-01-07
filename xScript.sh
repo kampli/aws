@@ -18,7 +18,7 @@ function addFilesToRepo() {
 function updateFilesToRepo() {
 
     git add ${@}
-    git commit -m "adding to repo ${@}"
+    git commit -m "Updating to repo ${@}"
 
     git push
 }
