@@ -93,8 +93,9 @@ aws cloudformation delete-stack \
 
 chmod 600 testkeypair.pem
 ls -l testkeypair.pem 
-cd /Users/kampli/workspace/Barclays/20260105_AWS_LampServer
-ssh -o StrictHostKeyChecking=accept-new -i ./testkeypair.pem ec2-user@18.170.66.137
+cd /Users/kampli/workspace/Barclays/20260105_AWS_LampServer/aws
+ssh -o StrictHostKeyChecking=accept-new -i ./testkeypair.pem ec2-user@3.10.169.53
+
 
 
 
@@ -108,3 +109,14 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
                       -keyout /etc/pki/tls/private/apache-selfsigned.key \
                       -out /etc/pki/tls/certs/apache-selfsigned.crt \
                       -subj "/C=GB/ST=Scotland/L=Glasgow/O=KampliLimited/OU=IT/CN=kamplidev.com/emailAddress=kampli@gmail.com"
+
+
+sslConfFile=/etc/httpd/conf.d/ssl.conf
+
+sed -r 's/^SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key/\#SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key\nSSLCertificateKeyFile \/etc\/pki\/tls\/private\/apache-selfsigned.key/g' \
+            ${sslConfFile} | grep SSLCertificateKeyFile
+
+sed -i -r 's/^SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key/\#SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key\nSSLCertificateKeyFile \/etc\/pki\/tls\/private\/apache-selfsigned.key/g' \
+            ${sslConfFile} | grep SSLCertificateKeyFile
+
+grep SSLCertificateKeyFile ${sslConfFile}

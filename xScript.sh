@@ -23,6 +23,25 @@ function updateFilesToRepo() {
     git push
 }
 
+function createStack() {
+    aws cloudformation update-stack \
+        --stack-name lamp-stack \
+        --template-body file://aws_CF_LAMP_Template.yaml \
+        --parameters ParameterKey=KeyName,ParameterValue=testkeypair
+}
+
+function updateStack() {
+    aws cloudformation update-stack \
+        --stack-name lamp-stack \
+        --template-body file://aws_CF_LAMP_Template.yaml \
+        --parameters ParameterKey=KeyName,ParameterValue=testkeypair
+}
+
+function deleteStack() {
+    aws cloudformation delete-stack \
+        --stack-name lamp-stack
+}
+
 if [ $# -gt 0 ] ; then
     ${@}
 else
