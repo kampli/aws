@@ -100,7 +100,7 @@ function openURLs() {
 if [ $# -gt 0 ] ; then
     ${@}
 else
-    echo "Invalid call"
+    echo "List of functions supported:"
     listFunctions
 
 fi
