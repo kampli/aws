@@ -55,19 +55,46 @@ function getOutputs() {
         --query "Stacks[0].Outputs"
 }
 
-function loginToEC2() {
-    echo "getting IP Address for the EC2 instance"
-    aws cloudformation describe-stacks \
-        --stack-name lamp-stack \
-        --query "Stacks[0].Outputs[?OutputKey=='InstancePublicIP'].OutputValue" \
-        --output text
-    
+function getIPAddress() {
     ipAddress_EC2=$(aws cloudformation describe-stacks \
                         --stack-name lamp-stack \
                         --query "Stacks[0].Outputs[?OutputKey=='InstancePublicIP'].OutputValue" \
                         --output text);
+    echo "${ipAddress_EC2}"
+    
+}
+
+function getPublicDNS() {
+    publicDNS=$(aws cloudformation describe-stacks \
+                        --stack-name lamp-stack \
+                        --query "Stacks[0].Outputs[?OutputKey=='PublicDNS'].OutputValue" \
+                        --output text);
+    echo "${publicDNS}"
+    
+}
+
+function loginToEC2() {
+    
+    ipAddress_EC2=$(getIPAddress);
     echo "ipAddress_EC2 = ${ipAddress_EC2}"
+    chmod 600 testkeypair.pem
+    ls -l testkeypair.pem
     ssh -o StrictHostKeyChecking=accept-new -i ./testkeypair.pem ec2-user@${ipAddress_EC2}
+}
+
+
+function openURLs() {
+    
+    ipAddress_EC2=$(getIPAddress);
+    publicDNS_EC2=$(getPublicDNS)
+    echo "ipAddress_EC2 = ${ipAddress_EC2}"
+    echo -e "   URLs = 
+                http://${ipAddress_EC2}
+                https://${ipAddress_EC2}
+                http://${publicDNS_EC2}
+                https://${publicDNS_EC2}
+                "
+    open "http://${ipAddress_EC2}" "https://${ipAddress_EC2}" http://${publicDNS_EC2} https://${publicDNS_EC2}
 }
 
 if [ $# -gt 0 ] ; then
