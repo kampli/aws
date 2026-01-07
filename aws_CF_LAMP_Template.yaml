@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: LAMP Stack on Amazon Linux 2023 (EC2 + Apache + PHP + MariaDB)
+
+Parameters:
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair for SSH access
+
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t3.micro
+    Description: EC2 instance type
+
+Resources:
+  LampSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH and HTTP access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  LampInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+      SecurityGroupIds:
+        - !Ref LampSecurityGroup
+
+      Tags:
+        - Value: !Sub "${AWS::StackName}-LampServer_EC2"
+          Key: Name
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          dnf update -y
+
+          # Install LAMP packages
+          dnf install -y httpd wget php-fpm php-mysqlnd php-mysqli php-json php php-devel
+          dnf install -y mariadb105-server
+
+          usermod -a -G apache ec2-user
+          chown -R ec2-user:apache /var/www
+
+          # Enable and start services
+          systemctl enable httpd mariadb
+          systemctl start httpd mariadb
+
+          # Set permissions
+          chown -R apache:apache /var/www
+          chmod 2775 /var/www && find /var/www -type d -exec chmod 2775 {} \;
+          find /var/www -type f -exec chmod 0664 {} \;
+
+          echo "<?php phpinfo(); ?>" > /var/www/html/phpinfo.php
+          chmod -R 755 /var/www
+
+          # Create test PHP page
+          cat << 'EOF' > /var/www/html/index.php
+          <?php
+          phpinfo();
+          ?>
+          EOF
+
+          mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY 'kampli00'; FLUSH PRIVILEGES;"
+          mysql -u root --password=kampli00 -e "
+          DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+          SELECT Host FROM mysql.user WHERE User='root';
+          DELETE FROM mysql.user WHERE User='';
+          DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+          DROP DATABASE IF EXISTS test;
+          DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
+          FLUSH PRIVILEGES;
+          "
+          # mysql_secure_installation --password=kampli00
+
+Outputs:
+  InstancePublicIP:
+    Description: Public IP address of the LAMP EC2 instance
+    Value: !GetAtt LampInstance.PublicIp
+
+  WebsiteURL:
+    Description: URL of the LAMP Stack
+    Value: !Sub "http://${LampInstance.PublicDnsName}"
