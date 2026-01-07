@@ -41,13 +41,17 @@ Resources:
       ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
       SecurityGroupIds:
         - !Ref LampSecurityGroup
-
       Tags:
         - Value: !Sub "${AWS::StackName}-LampServer_EC2"
           Key: Name
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
+          set -x
+          i=0;
+          echo "kampli - $((i++)) - start"
+          echo "kampli - $((i++)) - after log"
+          echo "kampli - $((i++)) - after log setup"
           dnf update -y
 
           # Install LAMP packages
@@ -86,6 +90,12 @@ Resources:
           DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
           FLUSH PRIVILEGES;
           "
+          dnf install -y openssl mod_ssl
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                      -keyout /etc/pki/tls/private/apache-selfsigned.key \
+                      -out /etc/pki/tls/certs/apache-selfsigned.crt \
+                      -subj "/C=GB/ST=Scotland/L=Glasgow/O=KampliLimited/OU=IT/CN=kamplidev.com/emailAddress=kampli@gmail.com"
+          
           # mysql_secure_installation --password=kampli00
 
 Outputs:
