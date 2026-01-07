@@ -28,7 +28,7 @@ function updateFilesToRepo() {
 
 function createStack() {
     echo "AWS_PROFILE == ${AWS_PROFILE}"
-    aws cloudformation update-stack \
+    aws cloudformation create-stack \
         --stack-name lamp-stack \
         --template-body file://aws_CF_LAMP_Template.yaml \
         --parameters ParameterKey=KeyName,ParameterValue=testkeypair
