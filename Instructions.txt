@@ -94,8 +94,11 @@ aws cloudformation delete-stack \
 chmod 600 testkeypair.pem
 ls -l testkeypair.pem 
 cd /Users/kampli/workspace/Barclays/20260105_AWS_LampServer/aws
-ssh -o StrictHostKeyChecking=accept-new -i ./testkeypair.pem ec2-user@3.10.169.53
+ssh -o StrictHostKeyChecking=accept-new -i ./testkeypair.pem ec2-user@13.40.126.5
 
+cd /etc/httpd/conf.d/
+
+grep SSLCert /etc/httpd/conf.d/ssl.conf
 
 
 
