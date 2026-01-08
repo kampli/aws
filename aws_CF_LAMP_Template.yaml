@@ -16,8 +16,25 @@ Parameters:
 
   DBRootPassword:
     Type: String
-    Default: kampli00
+    NoEcho: true
+    MinLength: 8
+    Default: rootkampli00
     Description: mysql DB root password
+  
+  WordPressDBName:
+    Type: String
+    Default: wordpressdb
+
+  WordPressDBUser:
+    Type: String
+    Default: wpuser
+
+  WordPressDBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Default: wpkampli00
+
 Resources:
   LampSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -40,6 +57,9 @@ Resources:
 
   LampInstance:
     Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT60M
     Metadata:
       AWS::CloudFormation::Init:
         config:
@@ -53,27 +73,27 @@ Resources:
               php-mysqli: []
               php-json: []
               php-devel: []
+              php-gd: []
               mariadb105-server: []
               openssl: []
               mod_ssl: []
 
           files:
             /var/www/html/index.php:
-              owner: apache
-              group: apache
               mode: "0644"
               content: |
-                <?php
-                phpinfo();
-                ?>
+                <?php phpinfo(); ?>
 
           commands:
+
             01_permissions:
               command: |
+                #TODO check why the packages are not installed via config:packages:dnf
+                dnf install -y httpd wget php php-fpm php-mysqlnd php-mysqli php-json php-devel php-gd mariadb105-server openssl mod_ssl
                 usermod -a -G apache ec2-user || true
                 chown -R apache:apache /var/www
-                find /var/www -type d -exec chmod 2755 {} \;
-                find /var/www -type f -exec chmod 0644 {} \;
+                find /var/www -type d -exec chmod 755 {} \;
+                find /var/www -type f -exec chmod 644 {} \;
 
             02_start_services:
               command: |
@@ -83,36 +103,72 @@ Resources:
 
             03_secure_mariadb:
               command: !Sub |
-                mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${DBRootPassword}'; FLUSH PRIVILEGES;"
+                mysql -e "ALTER USER IF EXISTS 'root'@'localhost' IDENTIFIED BY '${DBRootPassword}'; FLUSH PRIVILEGES;"
                 mysql -u root --password=${DBRootPassword} -e "
-                DELETE FROM mysql.user WHERE User='';
-                DROP DATABASE IF EXISTS test;
-                FLUSH PRIVILEGES;
+                  DELETE FROM mysql.user WHERE User='';
+                  DROP DATABASE IF EXISTS test;
+                  FLUSH PRIVILEGES;
                 "
 
-            04_generate_self_signed_cert:
+            04_create_wordpress_db:
+              command: !Sub |
+                mysql -u root --password=${DBRootPassword} -e "
+                  CREATE DATABASE IF NOT EXISTS ${WordPressDBName};
+                  CREATE USER IF NOT EXISTS '${WordPressDBUser}'@'localhost'
+                    IDENTIFIED BY '${WordPressDBPassword}';
+                  GRANT ALL PRIVILEGES ON ${WordPressDBName}.* TO '${WordPressDBUser}'@'localhost';
+                  FLUSH PRIVILEGES;
+                "
+
+            05_install_wordpress:
+              command: |
+                cd /tmp
+                if [ ! -d /var/www/html/wp-admin ]; then
+                  wget https://wordpress.org/latest.tar.gz
+                  tar -xzf latest.tar.gz
+                  cp -r wordpress/* /var/www/html/
+                fi
+
+            06_configure_wp:
+              command: !Sub |
+                cd /var/www/html
+                if [ ! -f wp-config.php ]; then
+                  cp wp-config-sample.php wp-config.php
+                  sed -i "s/database_name_here/${WordPressDBName}/" wp-config.php
+                  sed -i "s/username_here/${WordPressDBUser}/" wp-config.php
+                  sed -i "s/password_here/${WordPressDBPassword}/" wp-config.php
+
+                  curl -s https://api.wordpress.org/secret-key/1.1/salt/ >> wp-config.php
+                fi
+
+            07_fix_wp_permissions:
+              command: |
+                chown -R apache:apache /var/www/html
+                find /var/www/html -type d -exec chmod 755 {} \;
+                find /var/www/html -type f -exec chmod 644 {} \;
+
+            08_generate_self_signed_cert:
               command: |
                 CERT=/etc/pki/tls/certs/apache-selfsigned.crt
                 KEY=/etc/pki/tls/private/apache-selfsigned.key
 
                 if [ ! -f "$CERT" ] || [ ! -f "$KEY" ]; then
+
                   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
                     -keyout $KEY \
                     -out $CERT \
                     -subj "/C=GB/ST=Scotland/L=Glasgow/O=KampliLimited/OU=IT/CN=kamplidev.com/emailAddress=kampli@gmail.com"
-                  chmod 600 $KEY
                 fi
 
-            05_configure_apache_ssl:
+            09_configure_ssl:
               command: |
                 SSL_CONF=/etc/httpd/conf.d/ssl.conf
-
                 sed -i \
                   -e 's|^SSLCertificateFile .*|SSLCertificateFile /etc/pki/tls/certs/apache-selfsigned.crt|' \
                   -e 's|^SSLCertificateKeyFile .*|SSLCertificateKeyFile /etc/pki/tls/private/apache-selfsigned.key|' \
                   $SSL_CONF
 
-            06_restart_httpd:
+            10_restart_httpd:
               command: |
                 systemctl restart httpd
 
@@ -133,7 +189,7 @@ Resources:
         - !Ref LampSecurityGroup
       Tags:
         - Key: Name
-          Value: !Sub "${AWS::StackName}-LampServer_EC2"
+          Value: !Sub "${AWS::StackName}_EC2"
 
       UserData:
         Fn::Base64: !Sub |
@@ -151,17 +207,20 @@ Resources:
             --resource LampInstance \
             --region ${AWS::Region}
 
-
 Outputs:
   InstancePublicIP:
     Description: Public IP address of the LAMP EC2 instance
     Value: !GetAtt LampInstance.PublicIp
+
   PublicDNS:
     Description: Public DNS of the LAMP Stack EC2
-    Value: !GetAtt "LampInstance.PublicDnsName"
+    Value: !GetAtt LampInstance.PublicDnsName
+
   InstanceName:
     Description: Name of the LAMP EC2 instance
-    Value: !Sub "${AWS::StackName}-LampServer_EC2"
+    Value: !Sub "${AWS::StackName}_EC2"
+
   WebsiteURL:
     Description: URL of the LAMP Stack
     Value: !Sub "http://${LampInstance.PublicDnsName}"
+
