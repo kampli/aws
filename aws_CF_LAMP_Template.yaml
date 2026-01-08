@@ -59,10 +59,15 @@ Resources:
     Type: AWS::EC2::Instance
     CreationPolicy:
       ResourceSignal:
-        Timeout: PT60M
+        Timeout: PT30M
     Metadata:
       AWS::CloudFormation::Init:
-        config:
+        configSets:
+          default:
+            - install
+            - configure
+            - cfn-hup
+        install:
           packages:
             dnf:
               httpd: []
@@ -78,6 +83,7 @@ Resources:
               openssl: []
               mod_ssl: []
 
+        configure:
           files:
             /var/www/html/index.php:
               mode: "0644"
@@ -181,6 +187,39 @@ Resources:
                 enabled: true
                 ensureRunning: true
 
+        cfn-hup:
+          files:
+            /etc/cfn/cfn-hup.conf:
+              mode: "0400"
+              owner: root
+              group: root
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=5
+
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              mode: "0400"
+              owner: root
+              group: root
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.LampInstance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init \
+                  --stack ${AWS::StackName} \
+                  --resource LampInstance \
+                  --region ${AWS::Region} \
+                  --configsets default
+                runas=root
+
+          services:
+            systemd:
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+
     Properties:
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
@@ -194,12 +233,15 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash -xe
+
+          
           dnf install -y aws-cfn-bootstrap
 
           /opt/aws/bin/cfn-init \
             --stack ${AWS::StackName} \
             --resource LampInstance \
-            --region ${AWS::Region}
+            --region ${AWS::Region} \
+            --configsets default
 
           /opt/aws/bin/cfn-signal \
             --exit-code $? \
