@@ -1,6 +1,8 @@
 #!/bin/bash
 
 export AWS_PROFILE=kamplidev
+#export AWS_PROFILE=default
+
 
 
 function listFunctions() {

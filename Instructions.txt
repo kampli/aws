@@ -106,24 +106,33 @@ aws cloudformation describe-stacks \
   --query "Stacks[0].Outputs[?OutputKey=='InstancePublicIP'].OutputValue" \
   --output text
 
+
+aws cloudformation describe-stacks \
+  --stack-name lamp-stack \
+  --query "Stacks[0].Outputs" \
+  --output text
+
 https://docs.aws.amazon.com/linux/al2023/ug/hosting-wordpress-aml-2023.html
 
 
-m
+
+sudo dnf install -y httpd wget php php-fpm php-mysqlnd php-mysqli php-json php-devel php-gd mariadb105-server openssl mod_ssl
+
+aws cloudformation create-stack \
+        --stack-name lamp-stack \
+        --template-body file://aws_CF_LAMP_Template_UsingINIT_fails.yaml \
+        --parameters ParameterKey=KeyName,ParameterValue=testkeypair \
+                     ParameterKey=DBRootPassword,ParameterValue=kampli00
+
+aws cloudformation create-stack \
+        --stack-name lamp-stack \
+        --template-body file://aws_CF_LAMP_Template_refactor.yaml \
+        --parameters ParameterKey=KeyName,ParameterValue=testkeypair \
+                     ParameterKey=DBRootPassword,ParameterValue=kampli00
 
 
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-                      -keyout /etc/pki/tls/private/apache-selfsigned.key \
-                      -out /etc/pki/tls/certs/apache-selfsigned.crt \
-                      -subj "/C=GB/ST=Scotland/L=Glasgow/O=KampliLimited/OU=IT/CN=kamplidev.com/emailAddress=kampli@gmail.com"
+aws/aws_CF_LAMP_Template_refactor.yaml
 
+sudo dnf install -y httpd wget php php-fpm php-mysqlnd php-mysqli php-json php-devel mariadb105-server openssl mod_ssl
 
-sslConfFile=/etc/httpd/conf.d/ssl.conf
-
-sed -r 's/^SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key/\#SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key\nSSLCertificateKeyFile \/etc\/pki\/tls\/private\/apache-selfsigned.key/g' \
-            ${sslConfFile} | grep SSLCertificateKeyFile
-
-sed -i -r 's/^SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key/\#SSLCertificateKeyFile \/etc\/pki\/tls\/private\/localhost.key\nSSLCertificateKeyFile \/etc\/pki\/tls\/private\/apache-selfsigned.key/g' \
-            ${sslConfFile} | grep SSLCertificateKeyFile
-
-grep SSLCertificateKeyFile ${sslConfFile}
+aws/aws_CF_LAMP_Template_UsingINIT_fails.yaml
