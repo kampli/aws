@@ -89,6 +89,7 @@ Resources:
               command: |
                 
                 #TODO check why the packages are not installed via config:packages:dnf
+                dnf upgrade -y
                 dnf install -y httpd wget php php-fpm php-mysqlnd php-mysqli php-json php-devel php-gd mariadb105-server openssl mod_ssl
                 
                 WEB_ROOT="/var/www/html"
@@ -294,11 +295,15 @@ Resources:
             --region ${AWS::Region} \
             --configsets default
 
+          INIT_EXIT_CODE=$?
+
           /opt/aws/bin/cfn-signal \
-            --exit-code $? \
+            --exit-code $INIT_EXIT_CODE \
             --stack ${AWS::StackName} \
             --resource LampInstance \
             --region ${AWS::Region}
+          
+          exit $INIT_EXIT_CODE
 
 Outputs:
   InstancePublicIP:
