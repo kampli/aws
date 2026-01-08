@@ -1,10 +1,5 @@
 sudo dnf upgrade -y
 
-
-sudo dnf install -y httpd wget php-fpm php-mysqli php-json php php-devel
-
-sudo dnf install mariadb105-server
-
 sudo dnf info package_name
 
 
@@ -17,21 +12,8 @@ http://ec2-35-179-136-154.eu-west-2.compute.amazonaws.com/phpMyAdmin
 http://my.public.dns.amazonaws.com/phpMyAdmin
 
 
-#SSLCertificateFile /etc/pki/tls/certs/localhost.crt
-SSLCertificateFile /etc/pki/tls/certs/apache-selfsigned.crt
 
-
-#   Server Private Key:
-#   If the key is not combined with the certificate, use this
-#   directive to point at the key file.  Keep in mind that if
-#   you've both a RSA and a DSA private key you can configure
-#   both in parallel (to also allow the use of DSA ciphers, etc.)
-#   ECC keys, when in use, can also be configured in parallel
-#SSLCertificateKeyFile /etc/pki/tls/private/localhost.key
-SSLCertificateKeyFile /etc/pki/tls/private/apache-selfsigned.key
-
-
-
+mysql -u root --password="kampli00"
 
 
 aws cloudformation create-stack \
@@ -91,16 +73,6 @@ aws cloudformation delete-stack \
   --stack-name lamp-stack 
 
 
-chmod 600 testkeypair.pem
-ls -l testkeypair.pem
-cd /Users/kampli/workspace/Barclays/20260105_AWS_LampServer/aws
-ssh -o StrictHostKeyChecking=accept-new -i ./testkeypair.pem ec2-user@13.40.126.5
-
-cd /etc/httpd/conf.d/
-
-grep SSLCert /etc/httpd/conf.d/ssl.conf
-
-
 aws cloudformation describe-stacks \
   --stack-name lamp-stack \
   --query "Stacks[0].Outputs[?OutputKey=='InstancePublicIP'].OutputValue" \
@@ -116,53 +88,3 @@ https://docs.aws.amazon.com/linux/al2023/ug/hosting-wordpress-aml-2023.html
 
 
 
-sudo dnf install -y httpd wget php php-fpm php-mysqlnd php-mysqli php-json php-devel php-gd mariadb105-server openssl mod_ssl
-
-aws cloudformation create-stack \
-        --stack-name lamp-stack \
-        --template-body file://aws_CF_LAMP_Template_UsingINIT_fails.yaml \
-        --parameters ParameterKey=KeyName,ParameterValue=testkeypair \
-                     ParameterKey=DBRootPassword,ParameterValue=kampli00
-
-aws cloudformation create-stack \
-        --stack-name lamp-stack \
-        --template-body file://aws_CF_LAMP_Template_refactor.yaml \
-        --parameters ParameterKey=KeyName,ParameterValue=testkeypair \
-                     ParameterKey=DBRootPassword,ParameterValue=kampli00
-
-
-aws/aws_CF_LAMP_Template_refactor.yaml
-
-sudo dnf install -y httpd wget php php-fpm php-mysqlnd php-mysqli php-json php-devel mariadb105-server openssl mod_ssl
-
-aws/aws_CF_LAMP_Template_UsingINIT_fails.yaml
-
-
-
-dnf install -y aws-cfn-bootstrap
-
-cat <<EOF >/etc/cfn/cfn-hup.conf
-[main]
-stack=${AWS::StackName}
-region=${AWS::Region}
-interval=5
-EOF
-
-cat <<EOF >/etc/cfn/hooks.d/cfn-auto-reloader.conf
-[cfn-auto-reloader-hook]
-triggers=post.update
-path=Resources.LampInstance.Metadata.AWS::CloudFormation::Init
-action=/opt/aws/bin/cfn-init --stack ${AWS::StackName} --resource LampInstance --region ${AWS::Region}
-runas=root
-EOF
-
-systemctl enable cfn-hup
-systemctl start cfn-hup
-
-
-
-/opt/aws/bin/cfn-signal \
-            --exit-code 0 \
-            --stack lamp-stack \
-            --resource LampInstance \
-            --region eu-west-2
