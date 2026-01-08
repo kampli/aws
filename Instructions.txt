@@ -136,3 +136,33 @@ aws/aws_CF_LAMP_Template_refactor.yaml
 sudo dnf install -y httpd wget php php-fpm php-mysqlnd php-mysqli php-json php-devel mariadb105-server openssl mod_ssl
 
 aws/aws_CF_LAMP_Template_UsingINIT_fails.yaml
+
+
+
+dnf install -y aws-cfn-bootstrap
+
+cat <<EOF >/etc/cfn/cfn-hup.conf
+[main]
+stack=${AWS::StackName}
+region=${AWS::Region}
+interval=5
+EOF
+
+cat <<EOF >/etc/cfn/hooks.d/cfn-auto-reloader.conf
+[cfn-auto-reloader-hook]
+triggers=post.update
+path=Resources.LampInstance.Metadata.AWS::CloudFormation::Init
+action=/opt/aws/bin/cfn-init --stack ${AWS::StackName} --resource LampInstance --region ${AWS::Region}
+runas=root
+EOF
+
+systemctl enable cfn-hup
+systemctl start cfn-hup
+
+
+
+/opt/aws/bin/cfn-signal \
+            --exit-code 0 \
+            --stack lamp-stack \
+            --resource LampInstance \
+            --region eu-west-2
