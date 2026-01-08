@@ -22,6 +22,7 @@ Resources:
   LampSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
+      GroupName: !Sub "${AWS::StackName}-SecurityGroup"
       GroupDescription: Allow SSH and HTTP access
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -158,6 +159,9 @@ Outputs:
   PublicDNS:
     Description: Public DNS of the LAMP Stack EC2
     Value: !GetAtt "LampInstance.PublicDnsName"
+  InstanceName:
+    Description: Name of the LAMP EC2 instance
+    Value: !Sub "${AWS::StackName}-LampServer_EC2"
   WebsiteURL:
     Description: URL of the LAMP Stack
     Value: !Sub "http://${LampInstance.PublicDnsName}"
