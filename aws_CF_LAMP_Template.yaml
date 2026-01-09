@@ -82,6 +82,7 @@ Resources:
               mariadb105-server: []
               openssl: []
               mod_ssl: []
+              stress: []
 
         configure:
           commands:
@@ -90,7 +91,7 @@ Resources:
                 
                 #TODO check why the packages are not installed via config:packages:dnf
                 dnf upgrade -y
-                dnf install -y httpd wget php php-fpm php-mysqlnd php-mysqli php-json php-devel php-gd mariadb105-server openssl mod_ssl
+                dnf install -y httpd wget php php-fpm php-mysqlnd php-mysqli php-json php-devel php-gd mariadb105-server openssl mod_ssl stress
                 
                 WEB_ROOT="/var/www/html"
                 INDEX_FILE="$WEB_ROOT/index.php"
