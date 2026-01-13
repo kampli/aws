@@ -57,7 +57,7 @@ Resources:
       EnableDnsSupport: true
       Tags:
         - Key: "Name"
-          Value: "lAMP Stack - VPC"
+          Value: "LAMP Stack - VPC"
 
   PublicSubnet1:
     Type: "AWS::EC2::Subnet"
