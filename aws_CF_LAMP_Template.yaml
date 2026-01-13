@@ -35,7 +35,175 @@ Parameters:
     MinLength: 8
     Default: wpkampli00
 
+  VpcCIDR:
+    Type: String
+    Default: 10.0.0.0/16
+
+  PublicSubnetCIDRs:
+    Type: CommaDelimitedList
+    Default: 10.0.1.0/24,10.0.2.0/24,10.0.3.0/24
+
+  PrivateSubnetCIDRs:
+    Type: CommaDelimitedList
+    Default: 10.0.101.0/24,10.0.102.0/24,10.0.103.0/24
+
 Resources:
+
+  ### VPC ###
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: LAMP-VPC
+
+  ### Internet Gateway ###
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  ### Public Subnets ###
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Select [0, !Ref PublicSubnetCIDRs]
+      MapPublicIpOnLaunch: true
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Select [1, !Ref PublicSubnetCIDRs]
+      MapPublicIpOnLaunch: true
+
+  PublicSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      CidrBlock: !Select [2, !Ref PublicSubnetCIDRs]
+      MapPublicIpOnLaunch: true
+
+  ### Private Subnets ###
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Select [0, !Ref PrivateSubnetCIDRs]
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Select [1, !Ref PrivateSubnetCIDRs]
+
+  PrivateSubnetC:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      CidrBlock: !Select [2, !Ref PrivateSubnetCIDRs]
+
+  ### NAT Gateway ###
+  NatEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEIP.AllocationId
+      SubnetId: !Ref PublicSubnetA
+
+  ### Route Tables ###
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteAssocA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteAssocB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteAssocC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetC
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnetRouteAssocA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetRouteAssocB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetRouteAssocC:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetC
+      RouteTableId: !Ref PrivateRouteTable
+
+  ### Security Group ###
+  PrivateInstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Allow HTTP from ALB or Bastion
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 10.0.0.0/16
+
+
   LampSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -69,16 +237,16 @@ Resources:
             - cfn-hup
         install:
           packages:
-            dnf:
+            yum:
               httpd: []
               wget: []
-              php: []
-              php-fpm: []
-              php-mysqlnd: []
-              php-mysqli: []
-              php-json: []
-              php-devel: []
-              php-gd: []
+              # php: []
+              # php-fpm: []
+              # php-mysqlnd: []
+              # php-mysqli: []
+              # php-devel: []
+              # php-gd: []
+              # php-json: []
               mariadb105-server: []
               openssl: []
               mod_ssl: []
@@ -90,9 +258,13 @@ Resources:
               command: |
                 
                 #TODO check why the packages are not installed via config:packages:dnf
+                #dnf isnt supported by packages, though not sure why aws wouldn't throw an error, 
+                # but very well throws errors for any issues with yum install.
+                # yum install is flaky given the repo isnt accessible though user data runs before the install.
+                # yum update has been included in the user data.
                 dnf upgrade -y
                 dnf install -y httpd wget php php-fpm php-mysqlnd php-mysqli php-json php-devel php-gd mariadb105-server openssl mod_ssl stress
-                
+                  
                 WEB_ROOT="/var/www/html"
                 INDEX_FILE="$WEB_ROOT/index.php"
 
@@ -276,16 +448,20 @@ Resources:
     Properties:
       InstanceType: !Ref InstanceType
       KeyName: !Ref KeyName
+      SubnetId: !Ref PrivateSubnetA
       ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
       SecurityGroupIds:
-        - !Ref LampSecurityGroup
+        # - !Ref LampSecurityGroup
+        - !Ref PrivateInstanceSG
       Tags:
         - Key: Name
-          Value: !Sub "${AWS::StackName}_EC2"
+          Value: !Sub "${AWS::StackName}_private-subnet-EC2"
 
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash -xe
+          yum clean all
+          yum update -y
 
           
           dnf install -y aws-cfn-bootstrap
@@ -309,17 +485,21 @@ Resources:
 Outputs:
   InstancePublicIP:
     Description: Public IP address of the LAMP EC2 instance
-    Value: !GetAtt LampInstance.PublicIp
+    # Value: !GetAtt LampInstance.PublicIp
+    Value: !GetAtt LampInstance.PrivateIp
 
   PublicDNS:
     Description: Public DNS of the LAMP Stack EC2
-    Value: !GetAtt LampInstance.PublicDnsName
+    # Value: !GetAtt LampInstance.PublicDnsName
+    Value: !GetAtt LampInstance.PrivateDnsName
 
   InstanceName:
     Description: Name of the LAMP EC2 instance
-    Value: !Sub "${AWS::StackName}_EC2"
+    Value: !Sub "${AWS::StackName}_private-subnet-EC2"
 
   WebsiteURL:
     Description: URL of the LAMP Stack
-    Value: !Sub "http://${LampInstance.PublicDnsName}"
+    # Value: !Sub "http://${LampInstance.PublicDnsName}"
+    Value: !Sub "http://${NatEIP.PublicIp}"
+    
 
