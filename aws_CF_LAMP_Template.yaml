@@ -311,7 +311,7 @@ Resources:
   SystemsManagerEC2Role:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: OurSystemsManagerEC2Role
+      RoleName: lamp-stack-SystemsManagerEC2Role
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -330,7 +330,7 @@ Resources:
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
-      InstanceProfileName: OurSystemsManagerEC2Profile
+      InstanceProfileName: lamp-stack-SystemsManagerEC2Profile
       Roles:
         - !Ref SystemsManagerEC2Role
 
@@ -376,7 +376,7 @@ Resources:
   ApplicationLoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: OurApplicationLoadBalancer
+      Name: lamp-stack-ApplicationLoadBalancer
       Subnets:
         - !Ref PublicSubnet1
         - !Ref PublicSubnet2
