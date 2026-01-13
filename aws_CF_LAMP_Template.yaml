@@ -57,7 +57,7 @@ Resources:
       EnableDnsSupport: true
       Tags:
         - Key: "Name"
-          Value: "Your Custom VPC"
+          Value: "lAMP Stack - VPC"
 
   PublicSubnet1:
     Type: "AWS::EC2::Subnet"
@@ -393,6 +393,14 @@ Resources:
       VpcId: !Ref VPC
       Port: 80
       Protocol: HTTP
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      Matcher:
+        HttpCode: 200-399
+      Targets:
+        - Id: !Ref LampInstance
+          Port: 80
+
 
   MyListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -653,6 +661,7 @@ Resources:
       SecurityGroupIds:
         # - !Ref LampSecurityGroup
         - !Ref PrivateInstanceSG
+        - !Ref Ec2SecurityGroup
       Tags:
         - Key: Name
           Value: !Sub "${AWS::StackName}_private-subnet-EC2"
@@ -700,6 +709,7 @@ Outputs:
   WebsiteURL:
     Description: URL of the LAMP Stack
     # Value: !Sub "http://${LampInstance.PublicDnsName}"
-    Value: !Sub "http://${NatGw1ElasticIP.PublicIp}"
+    # Value: !Sub "http://${NatGw1ElasticIP.PublicIp}"
+    Value: !Sub "http://${ApplicationLoadBalancer.DNSName}"
     
 
