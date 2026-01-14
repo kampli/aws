@@ -28,22 +28,70 @@ function updateFilesToRepo() {
     git push
 }
 
+function validateTemplate() {
+    echo "AWS_PROFILE == ${AWS_PROFILE}"
+    aws cloudformation validate-template \
+        --template-body file://aws_CF_LAMP_Template.yaml
+}
+
 function createStack() {
     echo "AWS_PROFILE == ${AWS_PROFILE}"
-    aws cloudformation create-stack \
+    status=~$(aws cloudformation create-stack \
         --stack-name lamp-stack \
+        --capabilities CAPABILITY_NAMED_IAM \
         --template-body file://aws_CF_LAMP_Template.yaml \
         --parameters ParameterKey=KeyName,ParameterValue=testkeypair \
-                     ParameterKey=DBRootPassword,ParameterValue=kampli00
+                     ParameterKey=DBRootPassword,ParameterValue=kampli00 2>&1)
+    echo ${status}
+                     
 }
+function createStackLoop() {
+    status=$(createStack)
+    echo "status -- ${status}"
+    isError=`echo ${status} | grep -i 'error'`
+    echo "isError -- ${isError}"
+    while [ "${isError}"  != "" ] 
+    do
+        echo "Sleeping.... zzz"
+        sleep 10
+        status=$(createStack)
+        echo "status -- ${status}"
+        isError=`echo ${status} | grep -i 'error'`
+        echo "isError -- ${isError}"
+    done
+}
+
+function createChangeSet() {
+    echo "AWS_PROFILE == ${AWS_PROFILE}"
+    
+    aws cloudformation create-change-set \
+        --stack-name lamp-stack \
+        --change-set-name lamp-stack-changeset \
+        --use-previous-template \
+        --parameters ParameterKey=KeyName,ParameterValue=testkeypair \
+                     ParameterKey=DBRootPassword,ParameterValue=kampli00
+        
+        # --template-body file://aws_CF_LAMP_Template.yaml \
+}
+
+function listChangeSets() {
+
+    aws cloudformation list-change-sets \
+        --stack-name lamp-stack
+
+}
+
+
 
 function updateStack() {
     echo "AWS_PROFILE == ${AWS_PROFILE}"
     aws cloudformation update-stack \
         --stack-name lamp-stack \
         --template-body file://aws_CF_LAMP_Template.yaml \
+        --capabilities CAPABILITY_NAMED_IAM \
         --parameters ParameterKey=KeyName,ParameterValue=testkeypair \
                      ParameterKey=DBRootPassword,ParameterValue=kampli00
+        
 }
 
 function deleteStack() {

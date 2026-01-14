@@ -330,6 +330,18 @@ Resources:
               - sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: CloudFormationReadOnlyForCfnTools
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:GetTemplate
+                Resource: "*"
       Tags:
         - Key: Name
           Value: SystemsManagerEC2Role
@@ -663,7 +675,7 @@ Resources:
 
             10_restart_httpd:
               command: |
-                testFileName=/var/log/$(date +'%Y%m%d%H%M%S')_touchfile.log
+                testFileName=/var/log/$(date +'%Y%m%d%H%M%S')_touchfile_v1.log
                 touch $testFileName
                 chmod 777 $testFileName
 
@@ -688,7 +700,7 @@ Resources:
                 [main]
                 stack=${AWS::StackId}
                 region=${AWS::Region}
-                interval=5
+                interval=2
 
             /etc/cfn/hooks.d/cfn-auto-reloader.conf:
               mode: "0400"
@@ -927,7 +939,7 @@ Resources:
 
   #           10_restart_httpd:
   #             command: |
-  #               testFileName=/var/log/$(date +'%Y%m%d%H%M%S')_touchfile.log
+  #               testFileName=/var/log/$(date +'%Y%m%d%H%M%S')_touchfile_testv1.log
   #               touch $testFileName
   #               chmod 777 $testFileName
 
