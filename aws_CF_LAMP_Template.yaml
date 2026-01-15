@@ -47,6 +47,14 @@ Parameters:
     Type: CommaDelimitedList
     Default: 10.0.101.0/24,10.0.102.0/24,10.0.103.0/24
 
+  DomainName:
+    Type: String
+    Default: kampli.co.uk
+
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID for kampli.co.uk (e.g. Z123ABCXYZ)
+
 Resources:
 
   VPC:
@@ -346,7 +354,6 @@ Resources:
       Roles:
         - !Ref SystemsManagerEC2Role
 
-
   ### Security Group ###
   PrivateInstanceSG:
     Type: AWS::EC2::SecurityGroup
@@ -378,7 +385,6 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
-
 
   Ec2SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -464,10 +470,74 @@ Resources:
       Port: 443
       Protocol: HTTPS
       Certificates:
-        - CertificateArn: arn:aws:acm:eu-west-2:725673811658:certificate/ce0f8756-332a-49c1-ab9a-a4956ceb560b
+        - CertificateArn: !Ref ALBCertificate
+        # - CertificateArn: arn:aws:acm:eu-west-2:725673811658:certificate/ce0f8756-332a-49c1-ab9a-a4956ceb560b
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
+
+  AlbDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      # HostedZoneName: !Sub "${DomainName}."
+      Name: !Sub "${DomainName}."
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApplicationLoadBalancer.DNSName
+        HostedZoneId: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+        EvaluateTargetHealth: true
+
+  AlbDnsRecordWWW:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      # HostedZoneName: !Sub "${DomainName}."
+      Name: !Sub "www.${DomainName}."
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApplicationLoadBalancer.DNSName
+        HostedZoneId: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+        EvaluateTargetHealth: true
+
+  HttpsListenerWwwRedirect:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref HttpsListener
+      Priority: 1
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values:
+              - !Sub "www.${DomainName}"
+      Actions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Host: !Ref DomainName
+            Port: "443"
+            Path: "/#{path}"
+            Query: "#{query}"
+            StatusCode: HTTP_301
+            
+  ####################
+  # Certificate
+  ####################
+
+  ALBCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      SubjectAlternativeNames:
+        - !Sub "www.${DomainName}"
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+          # HostedZoneName: !Sub "${DomainName}."
+        - DomainName: !Sub "www.${DomainName}"
+          HostedZoneId: !Ref HostedZoneId
+          # HostedZoneName: !Sub "${DomainName}."
 
   LampLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
