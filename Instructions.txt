@@ -29,13 +29,13 @@ aws cloudformation create-stack \
 
 
   aws cloudformation create-stack \
-  --stack-name full-resilient-lamp-lambda-ssl \
-  --template-body file://full-resilient-lamp-lambda-ssl.json \
-  --parameters \
-    ParameterKey=KeyName,ParameterValue=YOUR_KEYPAIR_NAME \
-    ParameterKey=DomainName,ParameterValue=app.example.com \
-    ParameterKey=HostedZoneId,ParameterValue=Z123456ABCDEFG \
-  --capabilities CAPABILITY_NAMED_IAM
+    --stack-name full-resilient-lamp-lambda-ssl \
+    --template-body file://full-resilient-lamp-lambda-ssl.json \
+    --parameters \
+      ParameterKey=KeyName,ParameterValue=YOUR_KEYPAIR_NAME \
+      ParameterKey=DomainName,ParameterValue=app.example.com \
+      ParameterKey=HostedZoneId,ParameterValue=Z123456ABCDEFG \
+    --capabilities CAPABILITY_NAMED_IAM
 
 
 kampliawsadmin access key
@@ -88,9 +88,39 @@ https://docs.aws.amazon.com/linux/al2023/ug/hosting-wordpress-aml-2023.html
 
 
 
+aws cloudformation get-template \
+  --stack-name lamp-stack \
+  --region eu-west-2
 
-/opt/aws/bin/cfn-init \
-    --stack=lamp-stack  \
-    --resource=LampAutoScalingGroup \
-    --region=eu-west-2 \
-    --configsets=default
+
+
+aws acm import-certificate \
+  --certificate fileb://kamplidev.crt \
+  --private-key fileb://kamplidev.key \
+  --region eu-west-2
+
+  "CertificateArn": "arn:aws:acm:eu-west-2:725673811658:certificate/f38c66e0-e2a9-4ec3-85dc-09ee704394a9"
+
+  http://lamp-applicationloadbalancer-668051698.eu-west-2.elb.amazonaws.com/wp-admin/install.php?step=1
+
+
+
+  openssl req -x509 -nodes -days 365 \
+    -newkey rsa:2048 \
+    -keyout alb-dev.key \
+    -out alb-dev.crt \
+    -sha256 \
+    -subj "/CN=alb.dev.local" \
+    -addext "subjectAltName=DNS:alb.dev.local"
+
+aws acm import-certificate \
+  --certificate fileb://alb-dev.crt \
+  --private-key fileb://alb-dev.key \
+  --region eu-west-2
+
+    "CertificateArn": "arn:aws:acm:eu-west-2:725673811658:certificate/ce0f8756-332a-49c1-ab9a-a4956ceb560b"
+
+aws route53 list-hosted-zones \
+  --query "HostedZones[?Name=='kampli.co.uk.'].Id" \
+  --output text
+
