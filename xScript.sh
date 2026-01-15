@@ -41,7 +41,8 @@ function createStack() {
         --capabilities CAPABILITY_NAMED_IAM \
         --template-body file://aws_CF_LAMP_Template.yaml \
         --parameters ParameterKey=KeyName,ParameterValue=testkeypair \
-                     ParameterKey=DBRootPassword,ParameterValue=kampli00 2>&1)
+                     ParameterKey=DBRootPassword,ParameterValue=kampli00 \
+                     ParameterKey=HostedZoneId,ParameterValue=${HOSTZONEID} 2>&1)
     echo ${status}
                      
 }
@@ -69,7 +70,8 @@ function createChangeSet() {
         --change-set-name lamp-stack-changeset \
         --use-previous-template \
         --parameters ParameterKey=KeyName,ParameterValue=testkeypair \
-                     ParameterKey=DBRootPassword,ParameterValue=kampli00
+                     ParameterKey=DBRootPassword,ParameterValue=kampli00 \
+                     ParameterKey=HostedZoneId,ParameterValue=${HOSTZONEID} 
         
         # --template-body file://aws_CF_LAMP_Template.yaml \
 }
@@ -85,19 +87,54 @@ function listChangeSets() {
 
 function updateStack() {
     echo "AWS_PROFILE == ${AWS_PROFILE}"
-    aws cloudformation update-stack \
+    status=$(aws cloudformation update-stack \
         --stack-name lamp-stack \
         --template-body file://aws_CF_LAMP_Template.yaml \
         --capabilities CAPABILITY_NAMED_IAM \
         --parameters ParameterKey=KeyName,ParameterValue=testkeypair \
-                     ParameterKey=DBRootPassword,ParameterValue=kampli00
-        
+                     ParameterKey=DBRootPassword,ParameterValue=kampli00 \
+                     ParameterKey=HostedZoneId,ParameterValue=${HOSTZONEID} 2>&1)
+    echo ${status}    
+}
+
+function updateStackLoop() {
+    status=$(updateStack)
+    echo "status -- ${status}"
+    isError=`echo ${status} | grep -i 'error'`
+    echo "isError -- ${isError}"
+    while [ "${isError}"  != "" ] 
+    do
+        echo "Sleeping.... zzz"
+        sleep 10
+        status=$(updateStack)
+        echo "status -- ${status}"
+        isError=`echo ${status} | grep -i 'error'`
+        echo "isError -- ${isError}"
+    done
 }
 
 function deleteStack() {
+
     echo "AWS_PROFILE == ${AWS_PROFILE}"
-    aws cloudformation delete-stack \
-        --stack-name lamp-stack
+    status=$(aws cloudformation delete-stack \
+        --stack-name lamp-stack 2>&1)
+    echo ${status}
+}
+
+function deleteStackLoop() {
+    status=$(deleteStack)
+    echo "status -- ${status}"
+    isError=`echo ${status} | grep -i 'error'`
+    echo "isError -- ${isError}"
+    while [ "${isError}"  != "" ] 
+    do
+        echo "Sleeping.... zzz"
+        sleep 10
+        status=$(deleteStack)
+        echo "status -- ${status}"
+        isError=`echo ${status} | grep -i 'error'`
+        echo "isError -- ${isError}"
+    done
 }
 
 function getOutputs() {
@@ -154,6 +191,5 @@ if [ $# -gt 0 ] ; then
 else
     echo "List of functions supported:"
     listFunctions
-
 fi
 
