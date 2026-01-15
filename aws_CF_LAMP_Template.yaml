@@ -38,6 +38,11 @@ Parameters:
   VpcCIDR:
     Type: String
     Default: 10.0.0.0/16
+    
+  DBVPCCIDR:
+    Type: String
+    Default: 10.1.0.0/16
+
 
   PublicSubnetCIDRs:
     Type: CommaDelimitedList
@@ -283,6 +288,7 @@ Resources:
       NatGatewayId:
         Ref: "NatGw1"
 
+
   Igw:
     Type: "AWS::EC2::InternetGateway"
     Properties: { }
@@ -316,6 +322,131 @@ Resources:
         - Key: "Name"
           Value: "NAT GW EIP"
 
+
+  DBVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref DBVPCCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: "DB VPC"
+
+  DBPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DBVPC
+      CidrBlock: 10.1.101.0/24
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - "0"
+          - Fn::GetAZs:
+              Ref: "AWS::Region"
+      Tags:
+        - Key: Name
+          Value: "DB Private Subnet AZ A"
+
+  DBPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DBVPC
+      CidrBlock: 10.1.102.0/24
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - "1"
+          - Fn::GetAZs:
+              Ref: "AWS::Region"
+      Tags:
+        - Key: Name
+          Value: "DB Private Subnet AZ B"
+
+  DBPrivateSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DBVPC
+      CidrBlock: 10.1.103.0/24
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - "2"
+          - Fn::GetAZs:
+              Ref: "AWS::Region"
+      Tags:
+        - Key: Name
+          Value: "DB Private Subnet AZ B"
+
+  WebToDBPeering:
+    Type: AWS::EC2::VPCPeeringConnection
+    Properties:
+      VpcId: !Ref VPC
+      PeerVpcId: !Ref DBVPC
+      Tags:
+        - Key: Name
+          Value: "Web-to-DB Peering"
+
+  DBRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DBVPC
+      Tags:
+        - Key: Name
+          Value: "DB Private Route Table"
+
+  DBSubnetRoute1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBPrivateSubnet1
+      RouteTableId: !Ref DBRouteTable
+
+  DBSubnetRoute2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBPrivateSubnet2
+      RouteTableId: !Ref DBRouteTable
+
+  DBSubnetRoute3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBPrivateSubnet3
+      RouteTableId: !Ref DBRouteTable
+
+  WebToDBRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate1
+      DestinationCidrBlock: !Ref DBVPCCIDR
+      VpcPeeringConnectionId: !Ref WebToDBPeering
+
+  DBToWebRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DBRouteTable
+      DestinationCidrBlock: !Ref VpcCIDR
+      VpcPeeringConnectionId: !Ref WebToDBPeering
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow MySQL from Web VPC
+      VpcId: !Ref DBVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: !Ref VpcCIDR  # Web VPC CIDR
+
+  WebToDBSG:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 3306
+      ToPort: 3306
+      SourceSecurityGroupId: !Ref Ec2SecurityGroup
+      
   SystemsManagerEC2Role:
     Type: AWS::IAM::Role
     Properties:
@@ -364,11 +495,11 @@ Resources:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          CidrIp: 10.0.0.0/16
+          CidrIp: !Ref VpcCIDR
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          CidrIp: 10.0.0.0/16
+          CidrIp: !Ref VpcCIDR
 
   AlbSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -519,7 +650,14 @@ Resources:
             Path: "/#{path}"
             Query: "#{query}"
             StatusCode: HTTP_301
-            
+
+  CertificatesList:
+    Type: AWS::ElasticLoadBalancingV2::ListenerCertificate
+    Properties: 
+      Certificates: 
+        - CertificateArn: arn:aws:acm:eu-west-2:725673811658:certificate/ce0f8756-332a-49c1-ab9a-a4956ceb560b
+      ListenerArn: !Ref HttpsListener
+
   ####################
   # Certificate
   ####################
