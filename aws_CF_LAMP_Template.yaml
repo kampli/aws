@@ -47,13 +47,6 @@ Parameters:
     Type: CommaDelimitedList
     Default: 10.0.101.0/24,10.0.102.0/24,10.0.103.0/24
 
-  StackNameParam:
-    Type: String
-    Default: lamp-stack
-
-  AWSRegionNameParam:
-    Type: String
-    Default: eu-west-2
 Resources:
 
   VPC:
@@ -498,39 +491,30 @@ Resources:
               - Key: Name
                 Value: !Sub "${AWS::StackName}_private-subnet-EC2"
 
-        UserData: !Base64 |
-          #!/bin/bash -xe
-          yum clean all
-          yum update -y
+        UserData: 
+          Fn::Base64:
+            !Sub |
+              #!/bin/bash -xe
+              yum clean all
+              yum update -y
+              
+              dnf install -y aws-cfn-bootstrap
 
-          
-          dnf install -y aws-cfn-bootstrap
+              /opt/aws/bin/cfn-init \
+                --stack ${AWS::StackName} \
+                --region ${AWS::Region} \
+                --resource LampAutoScalingGroup \
+                --configsets default
 
-          /opt/aws/bin/cfn-init \
-            --stack lamp-stack \
-            --resource LampAutoScalingGroup \
-            --region eu-west-2 \
-            --configsets default
+              INIT_EXIT_CODE=$?
 
-            # --stack ${AWS::StackName} \
-            # --stack ${StackNameParam} \
-            # --region ${AWS::Region} \
-            # --region ${AWSRegionNameParam} \
+              /opt/aws/bin/cfn-signal \
+                --exit-code $INIT_EXIT_CODE \
+                --stack ${AWS::StackName} \
+                --region ${AWS::Region} \
+                --resource LampAutoScalingGroup
 
-            echo "--stack ${AWS::StackName} \
-            --stack ${StackNameParam} \
-            --region ${AWS::Region} \
-            --region ${AWSRegionNameParam} "
-
-          INIT_EXIT_CODE=$?
-
-          /opt/aws/bin/cfn-signal \
-            --exit-code $INIT_EXIT_CODE \
-            --stack lamp-stack \
-            --resource LampAutoScalingGroup \
-            --region eu-west-2
-          
-          exit $INIT_EXIT_CODE
+              exit $INIT_EXIT_CODE
 
   LampAutoScalingGroup:
     Type: 'AWS::AutoScaling::AutoScalingGroup'
