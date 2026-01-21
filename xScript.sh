@@ -36,6 +36,7 @@ function validateTemplate() {
 
 function createStack() {
     echo "AWS_PROFILE == ${AWS_PROFILE}"
+    echo $(date)
     status=~$(aws cloudformation create-stack \
         --stack-name lamp-stack \
         --capabilities CAPABILITY_NAMED_IAM \
@@ -87,6 +88,7 @@ function listChangeSets() {
 
 function updateStack() {
     echo "AWS_PROFILE == ${AWS_PROFILE}"
+    echo $(date)
     status=$(aws cloudformation update-stack \
         --stack-name lamp-stack \
         --template-body file://aws_CF_LAMP_Template.yaml \
@@ -116,6 +118,7 @@ function updateStackLoop() {
 function deleteStack() {
 
     echo "AWS_PROFILE == ${AWS_PROFILE}"
+    echo $(date)
     status=$(aws cloudformation delete-stack \
         --stack-name lamp-stack 2>&1)
     echo ${status}
