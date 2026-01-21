@@ -413,10 +413,26 @@ Resources:
       SubnetId: !Ref DBPrivateSubnet3
       RouteTableId: !Ref DBRouteTable
 
-  WebToDBRoute:
+ 
+
+  WebToDBRoute1:
     Type: AWS::EC2::Route
     Properties:
       RouteTableId: !Ref RouteTablePrivate1
+      DestinationCidrBlock: !Ref DBVPCCIDR
+      VpcPeeringConnectionId: !Ref WebToDBPeering
+
+  WebToDBRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate2
+      DestinationCidrBlock: !Ref DBVPCCIDR
+      VpcPeeringConnectionId: !Ref WebToDBPeering
+
+  WebToDBRoute3:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate3
       DestinationCidrBlock: !Ref DBVPCCIDR
       VpcPeeringConnectionId: !Ref WebToDBPeering
 
@@ -427,25 +443,31 @@ Resources:
       DestinationCidrBlock: !Ref VpcCIDR
       VpcPeeringConnectionId: !Ref WebToDBPeering
 
-  DBSecurityGroup:
+
+  WebInstanceSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Allow MySQL from Web VPC
+      VpcId: !Ref VPC
+      GroupDescription: Web tier
+
+  DBInstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
       VpcId: !Ref DBVPC
+      GroupDescription: MariaDB 
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 3306
           ToPort: 3306
-          CidrIp: !Ref VpcCIDR  # Web VPC CIDR
+          # SourceSecurityGroupId: !Ref Ec2SecurityGroup
+          CidrIp: !Ref VpcCIDR   # ✅ Web VPC CIDR
+          # SourceSecurityGroupId: !Ref LambdaDBSecurityGroup
+        # - IpProtocol: tcp
+        #   FromPort: 3000
+        #   ToPort: 3000
+        #   SourceSecurityGroupId: !Ref WebInstanceSG
 
-  WebToDBSG:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref DBSecurityGroup
-      IpProtocol: tcp
-      FromPort: 3306
-      ToPort: 3306
-      SourceSecurityGroupId: !Ref Ec2SecurityGroup
+
       
   SystemsManagerEC2Role:
     Type: AWS::IAM::Role
@@ -703,6 +725,9 @@ Resources:
           Fn::Base64:
             !Sub |
               #!/bin/bash -xe
+              #set -x for debug only not for production.
+              set -x
+
               yum clean all
               yum update -y
               
@@ -752,9 +777,66 @@ Resources:
               # stress: []
 
         configure:
+
+          files:
+            /etc/db.conf:
+              content: !Sub |
+                DB_HOST=${DBNetworkInterface.PrimaryPrivateIpAddress}
+              mode: "0644"
+              owner: root
+              group: root
+
+            /etc/systemd/system/httpd.service.d/aws-env.conf:
+              content: !Sub |
+                [Service]
+                Environment="AWS_REGION=${AWS::Region}"
+                Environment="AWS_DEFAULT_REGION=${AWS::Region}"
+              mode: "0644"
+              owner: root
+              group: root
+
+            /var/www/html/lambda_invoke.php:
+              content: !Sub |
+                <?php
+                require '/var/www/html/vendor/autoload.php';
+
+                use Aws\Lambda\LambdaClient;
+                use Aws\Exception\AwsException;
+
+                $client = new LambdaClient([
+                    'version' => 'latest',
+                    'region'  => getenv('AWS_REGION')
+                ]);
+
+                try {
+                    $result = $client->invoke([
+                        'FunctionName' => 'LAMP-DB-Logger',
+                        'InvocationType' => 'RequestResponse',
+                        'Payload' => json_encode([
+                            'source' => 'php-web',
+                            'timestamp' => time()
+                        ])
+                    ]);
+
+                    $response = json_decode($result->get('Payload')->getContents(), true);
+
+                    echo "<h2>Lambda invoked successfully</h2>";
+                    echo "<pre>" . print_r($response, true) . "</pre>";
+
+                } catch (AwsException $e) {
+                    echo "<h2>Error invoking Lambda</h2>";
+                    echo "<pre>" . $e->getMessage() . "</pre>";
+                }
+                ?>
+              mode: "0644"
+              owner: root
+              group: root
+
           commands:
             01_permissions:
               command: |
+                #set -x for debug only not for production.
+                set -x
                 
                 #TODO check why the packages are not installed via config:packages:dnf
                 #dnf isnt supported by packages, though not sure why aws wouldn't throw an error, 
@@ -762,8 +844,11 @@ Resources:
                 # yum install is flaky given the repo isnt accessible though user data runs before the install.
                 # yum update has been included in the user data.
                 dnf upgrade -y
-                dnf install -y httpd wget php php-fpm php-mysqlnd php-mysqli php-json php-devel php-gd mariadb105-server openssl mod_ssl stress
-                  
+                dnf install -y --allowerasing \
+                                httpd wget php php-fpm php-mysqlnd php-mysqli php-json \
+                                php-devel php-gd openssl mod_ssl stress nmap-ncat telnet \
+                                mariadb105 curl php-cli php-mbstring git unzip
+                # mariadb105-server
                 WEB_ROOT="/var/www/html"
                 INDEX_FILE="$WEB_ROOT/index.php"
 
@@ -786,68 +871,73 @@ Resources:
 
             02_start_services:
               command: |
-                systemctl enable httpd mariadb
-                systemctl start mariadb
-                until mysqladmin ping --silent; do sleep 2; done
+                #set -x for debug only not for production.
+                set -x
+                # systemctl enable  mariadb
+                systemctl enable httpd 
+                # systemctl start mariadb
+                # until mysqladmin ping --silent; do sleep 2; done
 
-            03_secure_mariadb:
-              command: !Sub |
-                #!/bin/bash
-                set -e
+            # 03_secure_mariadb:
+            #   command: !Sub |
+            #     #!/bin/bash
+            #     set -e
 
-                # Wait for MariaDB
-                until mysqladmin ping --silent; do
-                  sleep 2
-                done
+            #     # Wait for MariaDB
+            #     until mysqladmin ping --silent; do
+            #       sleep 2
+            #     done
 
-                # Determine how to connect as root
-                if mysql -u root -e "SELECT 1" >/dev/null 2>&1; then
-                  MYSQL="mysql -u root"
-                elif mysql -u root -p"${DBRootPassword}" -e "SELECT 1" >/dev/null 2>&1; then
-                  MYSQL="mysql -u root -p${DBRootPassword}"
-                else
-                  echo "ERROR: Unable to authenticate to MariaDB as root"
-                  exit 1
-                fi
+            #     # Determine how to connect as root
+            #     if mysql -u root -e "SELECT 1" >/dev/null 2>&1; then
+            #       MYSQL="mysql -u root"
+            #     elif mysql -u root -p"${DBRootPassword}" -e "SELECT 1" >/dev/null 2>&1; then
+            #       MYSQL="mysql -u root -p${DBRootPassword}"
+            #     else
+            #       echo "ERROR: Unable to authenticate to MariaDB as root"
+            #       exit 1
+            #     fi
 
-                # Check if password already matches (idempotent)
-                PASSWORD_OK=$($MYSQL -Nse "
-                  SELECT COUNT(*) FROM mysql.user
-                  WHERE User='root'
-                    AND Host='localhost'
-                    AND authentication_string = PASSWORD('${DBRootPassword}');
-                ")
+            #     # Check if password already matches (idempotent)
+            #     PASSWORD_OK=$($MYSQL -Nse "
+            #       SELECT COUNT(*) FROM mysql.user
+            #       WHERE User='root'
+            #         AND Host='localhost'
+            #         AND authentication_string = PASSWORD('${DBRootPassword}');
+            #     ")
 
-                if [ "$PASSWORD_OK" -eq 0 ]; then
-                  echo "Setting MariaDB root password"
-                  $MYSQL -e "
-                    ALTER USER 'root'@'localhost' IDENTIFIED BY '${DBRootPassword}';
-                    FLUSH PRIVILEGES;
-                  "
-                else
-                  echo "MariaDB root password already set — skipping"
-                fi
+            #     if [ "$PASSWORD_OK" -eq 0 ]; then
+            #       echo "Setting MariaDB root password"
+            #       $MYSQL -e "
+            #         ALTER USER 'root'@'localhost' IDENTIFIED BY '${DBRootPassword}';
+            #         FLUSH PRIVILEGES;
+            #       "
+            #     else
+            #       echo "MariaDB root password already set — skipping"
+            #     fi
 
                 
-                #mysql -e "ALTER USER IF EXISTS 'root'@'localhost' IDENTIFIED BY '${DBRootPassword}'; FLUSH PRIVILEGES;"
-                mysql -u root --password=${DBRootPassword} -e "
-                  DELETE FROM mysql.user WHERE User='';
-                  DROP DATABASE IF EXISTS test;
-                  FLUSH PRIVILEGES;
-                "
+            #     #mysql -e "ALTER USER IF EXISTS 'root'@'localhost' IDENTIFIED BY '${DBRootPassword}'; FLUSH PRIVILEGES;"
+            #     mysql -u root --password=${DBRootPassword} -e "
+            #       DELETE FROM mysql.user WHERE User='';
+            #       DROP DATABASE IF EXISTS test;
+            #       FLUSH PRIVILEGES;
+            #     "
 
-            04_create_wordpress_db:
-              command: !Sub |
-                mysql -u root --password=${DBRootPassword} -e "
-                  CREATE DATABASE IF NOT EXISTS ${WordPressDBName};
-                  CREATE USER IF NOT EXISTS '${WordPressDBUser}'@'localhost'
-                    IDENTIFIED BY '${WordPressDBPassword}';
-                  GRANT ALL PRIVILEGES ON ${WordPressDBName}.* TO '${WordPressDBUser}'@'localhost';
-                  FLUSH PRIVILEGES;
-                "
+            # 04_create_wordpress_db:
+            #   command: !Sub |
+            #     mysql -u root --password=${DBRootPassword} -e "
+            #       CREATE DATABASE IF NOT EXISTS ${WordPressDBName};
+            #       CREATE USER IF NOT EXISTS '${WordPressDBUser}'@'localhost'
+            #         IDENTIFIED BY '${WordPressDBPassword}';
+            #       GRANT ALL PRIVILEGES ON ${WordPressDBName}.* TO '${WordPressDBUser}'@'localhost';
+            #       FLUSH PRIVILEGES;
+            #     "
 
             05_install_wordpress:
               command: |
+                #set -x for debug only not for production.
+                set -x
                 cd /tmp
                 if [ ! -d /var/www/html/wp-admin ]; then
                   wget https://wordpress.org/latest.tar.gz
@@ -855,26 +945,53 @@ Resources:
                   cp -r wordpress/* /var/www/html/
                 fi
 
+                cp "/tmp/wordpress/index.php" "$WEB_ROOT/wp_index.php"
+
+
+                WEB_ROOT="/var/www/html"
+                INDEX_FILE="$WEB_ROOT/index.php"
+
+                # Ensure web root exists
+                mkdir -p "$WEB_ROOT"
+
+                
+                
+
+                # Create index.php only if it does not exist
+                echo '<?php phpinfo(); ?>' > "$INDEX_FILE"
+                
+
             06_configure_wp:
               command: !Sub |
+                #set -x for debug only not for production.
+                set -x
+
                 cd /var/www/html
+                
                 if [ ! -f wp-config.php ]; then
                   cp wp-config-sample.php wp-config.php
                   sed -i "s/database_name_here/${WordPressDBName}/" wp-config.php
                   sed -i "s/username_here/${WordPressDBUser}/" wp-config.php
                   sed -i "s/password_here/${WordPressDBPassword}/" wp-config.php
+                  sed -i "s/localhost/${DBNetworkInterface.PrimaryPrivateIpAddress}/" wp-config.php
 
                   curl -s https://api.wordpress.org/secret-key/1.1/salt/ >> wp-config.php
                 fi
 
             07_fix_wp_permissions:
               command: |
+                #set -x for debug only not for production.
+                set -x
+
                 chown -R apache:apache /var/www/html
                 find /var/www/html -type d -exec chmod 755 {} \;
                 find /var/www/html -type f -exec chmod 644 {} \;
 
             08_generate_self_signed_cert:
               command: |
+                #set -x for debug only not for production.
+                set -x
+
                 CERT=/etc/pki/tls/certs/apache-selfsigned.crt
                 KEY=/etc/pki/tls/private/apache-selfsigned.key
 
@@ -888,6 +1005,9 @@ Resources:
 
             09_configure_ssl:
               command: |
+                #set -x for debug only not for production.
+                set -x
+
                 SSL_CONF=/etc/httpd/conf.d/ssl.conf
                 sed -i \
                   -e 's|^SSLCertificateFile .*|SSLCertificateFile /etc/pki/tls/certs/apache-selfsigned.crt|' \
@@ -896,20 +1016,49 @@ Resources:
 
             10_restart_httpd:
               command: |
+                #set -x for debug only not for production.
+                set -x
+
                 testFileName=/var/log/$(date +'%Y%m%d%H%M%S')_touchfile_v1.log
                 touch $testFileName
                 chmod 777 $testFileName
 
+                systemctl daemon-reexec
+
                 systemctl restart httpd
+
+            11_install_php_composer:
+              command: |
+                #set -x for debug only not for production.
+                set -x
+
+                #dnf install -y --allowerasing curl php-cli php-mbstring git unzip
+
+                mkdir -p $HOME/.config/composer
+                export COMPOSER_HOME="$HOME/.config/composer";
+
+                curl -sS https://getcomposer.org/installer -o composer-setup.php
+                php composer-setup.php --check
+                php composer-setup.php --install-dir=/usr/local/bin --filename=composer
+
+                cd /var/www/html
+
+                composer -q require aws/aws-sdk-php
+
+                export AWS_REGION=${AWS::Region}
+                echo $AWS_REGION
+                echo $AWS_REGION
+
+
 
           services:
             systemd:
               httpd:
                 enabled: true
                 ensureRunning: true
-              mariadb:
-                enabled: true
-                ensureRunning: true
+              # mariadb:
+              #   enabled: true
+              #   ensureRunning: true
 
         cfn-hup:
           files:
@@ -931,12 +1080,22 @@ Resources:
                 [cfn-auto-reloader-hook]
                 triggers=post.update
                 path=Resources.LampAutoScalingGroup.Metadata.AWS::CloudFormation::Init
-                action=/opt/aws/bin/cfn-init \
+                action=/opt/aws/bin/cfn-init -v \
                   --stack ${AWS::StackName} \
                   --resource LampAutoScalingGroup \
                   --region ${AWS::Region} \
                   --configsets default
                 runas=root
+
+          commands:
+            enable_cfn_hup:
+              command: |
+                #set -x for debug only not for production.
+                set -x
+
+                systemctl enable cfn-hup
+                systemctl start cfn-hup
+                # systemctl status cfn-hup
 
           services:
             systemd:
@@ -989,6 +1148,312 @@ Resources:
         DisableScaleIn: false
 
 
+  DBInstance:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - DBNetworkInterface
+    Properties:
+      InstanceType: t2.micro
+      ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+      KeyName: !Ref KeyName
+      # SubnetId: !Ref DBPrivateSubnet1
+      # SecurityGroupIds:
+      #   - !Ref DBInstanceSG
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref DBNetworkInterface
+          DeviceIndex: 0
+      Tags:
+        - Key: Name
+          Value: MariaDB-Primary
+      UserData:
+        Fn::Base64: !Sub |
+            #!/bin/bash -xe
+
+            #set -x for debug only not for production.
+            set -x
+
+            dnf install -y mariadb105-server
+
+            systemctl stop mariadb || true
+
+            mkfs.xfs /dev/xvdf || true
+            mkdir -p /var/lib/mysql
+            mount /dev/xvdf /var/lib/mysql
+            echo "/dev/xvdf /var/lib/mysql xfs defaults,nofail 0 2" >> /etc/fstab
+
+            rm -rf /var/lib/mysql/*
+            chown -R mysql:mysql /var/lib/mysql
+
+            mariadb-install-db --user=mysql --datadir=/var/lib/mysql
+
+            sed -i 's/^bind-address.*/bind-address=0.0.0.0/' /etc/my.cnf.d/mariadb-server.cnf
+
+            systemctl enable mariadb
+            systemctl start mariadb
+            # 03_secure_mariadb:
+            #   command: !Sub |
+            #     #!/bin/bash
+            set -e
+                # DBRootPassword=rootkampli00
+                # WordPressDBName=wordpressdb
+                # WordPressDBUser=wpuser
+                # WordPressDBPassword=wpkampli00
+
+                # mysql -u ${WordPressDBUser} -p${WordPressDBPassword}
+                #  mysql -u root -p${DBRootPassword}
+
+
+                # Wait for MariaDB
+                until mysqladmin ping --silent; do
+                  sleep 2
+                done
+
+                # Determine how to connect as root
+                if mysql -u root -e "SELECT 1" >/dev/null 2>&1; then
+                  MYSQL="mysql -u root"
+                elif mysql -u root -p"${DBRootPassword}" -e "SELECT 1" >/dev/null 2>&1; then
+                  MYSQL="mysql -u root -p${DBRootPassword}"
+                else
+                  echo "ERROR  Unable to authenticate to MariaDB as root"
+                  exit 1
+                fi
+
+                # Check if password already matches (idempotent)
+                PASSWORD_OK=$($MYSQL -Nse "
+                  SELECT COUNT(*) FROM mysql.user
+                  WHERE User='root'
+                    AND Host='localhost'
+                    AND authentication_string = PASSWORD('${DBRootPassword}');
+                ")
+
+                if [ "$PASSWORD_OK" -eq 0 ]; then
+                  echo "Setting MariaDB root password"
+                  $MYSQL -e "
+                    ALTER USER 'root'@'localhost' IDENTIFIED BY '${DBRootPassword}';
+                    FLUSH PRIVILEGES;
+                  "
+                else
+                  echo "MariaDB root password already set — skipping"
+                fi
+
+                
+                #mysql -e "ALTER USER IF EXISTS 'root'@'localhost' IDENTIFIED BY '${DBRootPassword}'; FLUSH PRIVILEGES;"
+                mysql -u root --password=${DBRootPassword} -e "
+                  DELETE FROM mysql.user WHERE User='';
+                  DROP DATABASE IF EXISTS test;
+                  FLUSH PRIVILEGES;
+                "
+
+            # 04_create_wordpress_db:
+            #   command: !Sub |
+                mysql -u root --password=${DBRootPassword} -e "
+                  CREATE DATABASE IF NOT EXISTS ${WordPressDBName};
+                  CREATE USER IF NOT EXISTS '${WordPressDBUser}'@'%'
+                    IDENTIFIED BY '${WordPressDBPassword}';
+                  GRANT ALL PRIVILEGES ON ${WordPressDBName}.* TO '${WordPressDBUser}'@'%';
+                  FLUSH PRIVILEGES;
+                "
+
+  DBDataVolume:
+    Type: AWS::EC2::Volume
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: !Ref AWS::Region
+      Size: 8
+      VolumeType: gp3
+      Encrypted: true
+      Tags:
+        - Key: Name
+          Value: MariaDB-Data
+
+
+
+  DBVolumeAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    DependsOn:
+      - DBInstance
+      - DBDataVolume
+    Properties:
+      InstanceId: !Ref DBInstance
+      VolumeId: !Ref DBDataVolume
+      Device: /dev/xvdf
+
+
+  DBNetworkInterface:
+    Type: AWS::EC2::NetworkInterface
+    Properties:
+      SubnetId: !Ref DBPrivateSubnet1
+      GroupSet:
+        - !Ref DBInstanceSG
+      Description: Primary ENI for MariaDB
+      Tags:
+        - Key: Name
+          Value: MariaDB-Primary-ENI
+
+
+  DBInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: DB-VPC-IGW
+
+  DBIGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref DBVPC
+      InternetGatewayId: !Ref DBInternetGateway
+
+
+  DBPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DBVPC
+      CidrBlock: 10.1.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: !Ref AWS::Region
+      Tags:
+        - Key: Name
+          Value: DB-Public-Subnet
+
+  DBPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DBVPC
+      Tags:
+        - Key: Name
+          Value: DB-Public-RT
+
+  DBPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: DBIGWAttachment
+    Properties:
+      RouteTableId: !Ref DBPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref DBInternetGateway
+
+  DBPublicSubnetRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBPublicSubnet
+      RouteTableId: !Ref DBPublicRouteTable
+
+
+  DBNatEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: DB-NAT-EIP
+
+  DBNatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      SubnetId: !Ref DBPublicSubnet
+      AllocationId: !GetAtt DBNatEIP.AllocationId
+      Tags:
+        - Key: Name
+          Value: DB-NAT-Gateway
+
+  DBPrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DBRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref DBNatGateway
+
+
+
+  LambdaDBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Allow Lambda to access MariaDB
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: 3306
+        ToPort: 3306
+        CidrIp: !Ref DBVPCCIDR
+
+
+  WordpressLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: LAMP-DB-Logger
+      Runtime: python3.11
+      Handler: lambda_function.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 120
+      Environment:
+        Variables:
+          DB_HOST: !GetAtt DBNetworkInterface.PrimaryPrivateIpAddress
+          DB_USER: wpuser
+          DB_PASSWORD: !Ref WordPressDBPassword
+          DB_NAME: !Ref WordPressDBName
+      VpcConfig:
+        SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+        - !Ref PrivateSubnet3
+        SecurityGroupIds:
+          - !Ref Ec2SecurityGroup
+      Code:
+        ZipFile: |
+          import pymysql
+          import os
+
+          DB_HOST = os.environ['DB_HOST']
+          DB_USER = os.environ['DB_USER']
+          DB_PASSWORD = os.environ['DB_PASSWORD']
+          DB_NAME = os.environ['DB_NAME']
+
+          def handler(event, context):
+              connection = pymysql.connect(
+                  host=DB_HOST,
+                  user=DB_USER,
+                  password=DB_PASSWORD,
+                  database=DB_NAME,
+                  connect_timeout=5
+              )
+              try:
+                  with connection.cursor() as cursor:
+                      sql = "INSERT INTO logs(message) VALUES(%s)"
+                      cursor.execute(sql, ("Lambda invoked",))
+                      connection.commit()
+                  return {"status": "success"}
+              except Exception as e:
+                  return {"status": "error", "message": str(e)}
+              finally:
+                  connection.close()
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LAMP-Lambda-ExecutionRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AmazonRDSFullAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+
+
+
 Outputs:
   LoadBalancerName:
     Description: LoadBalancerName
@@ -1011,3 +1476,10 @@ Outputs:
     Value: !Sub "http://${ApplicationLoadBalancer.DNSName}"
     
 
+  # DBPrivateHostedZoneId:
+  #   Description: Route53 Private Hosted Zone ID
+  #   Value: !Ref DBPrivateHostedZone
+
+  DBPrivateIP:
+    Description: Stable private IP of MariaDB
+    Value: !GetAtt DBNetworkInterface.PrimaryPrivateIpAddress
