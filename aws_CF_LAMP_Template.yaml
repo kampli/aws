@@ -60,6 +60,11 @@ Parameters:
     Type: String
     Description: Route53 Hosted Zone ID for kampli.co.uk (e.g. Z123ABCXYZ)
 
+  LambdaArtifactsS3BucketName:
+    Type: String
+    Default: lamp-lambda-artifacts-725673811658-eu-west-2
+    Description: "Existing bucket name or new bucket name"
+
 Resources:
 
   VPC:
@@ -496,6 +501,15 @@ Resources:
                   - cloudformation:DescribeStackResources
                   - cloudformation:GetTemplate
                 Resource: "*"
+        - PolicyName: AllowInvokeAllLambda
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowInvokeAnyLambdaInAccount
+                Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*
       Tags:
         - Key: Name
           Value: SystemsManagerEC2Role
@@ -1251,7 +1265,13 @@ Resources:
                   CREATE DATABASE IF NOT EXISTS ${WordPressDBName};
                   CREATE USER IF NOT EXISTS '${WordPressDBUser}'@'%'
                     IDENTIFIED BY '${WordPressDBPassword}';
-                  GRANT ALL PRIVILEGES ON ${WordPressDBName}.* TO '${WordPressDBUser}'@'%';
+                  
+                  CREATE TABLE IF NOT EXISTS ${WordPressDBName}.logs (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    message VARCHAR(255),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                   ); 
+                   GRANT ALL PRIVILEGES ON ${WordPressDBName}.* TO '${WordPressDBUser}'@'%';
                   FLUSH PRIVILEGES;
                 "
 
@@ -1391,6 +1411,8 @@ Resources:
       Handler: lambda_function.handler
       Role: !GetAtt LambdaExecutionRole.Arn
       Timeout: 120
+      Layers:
+        - !Ref PymysqlLayer
       Environment:
         Variables:
           DB_HOST: !GetAtt DBNetworkInterface.PrimaryPrivateIpAddress
@@ -1399,39 +1421,46 @@ Resources:
           DB_NAME: !Ref WordPressDBName
       VpcConfig:
         SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-        - !Ref PrivateSubnet3
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+          - !Ref PrivateSubnet3
         SecurityGroupIds:
-          - !Ref Ec2SecurityGroup
+          # - !Ref Ec2SecurityGroup
+          - !Ref LambdaDBSecurityGroup
       Code:
-        ZipFile: |
-          import pymysql
-          import os
+        # S3Bucket: PLACEHOLDER
+        # S3Key: lambda.zip
+        S3Bucket: !Ref LambdaArtifactsS3BucketName
+        S3Key: lambda.zip
 
-          DB_HOST = os.environ['DB_HOST']
-          DB_USER = os.environ['DB_USER']
-          DB_PASSWORD = os.environ['DB_PASSWORD']
-          DB_NAME = os.environ['DB_NAME']
+      # Code:
+      #   ZipFile: |
+      #     import pymysql
+      #     import os
 
-          def handler(event, context):
-              connection = pymysql.connect(
-                  host=DB_HOST,
-                  user=DB_USER,
-                  password=DB_PASSWORD,
-                  database=DB_NAME,
-                  connect_timeout=5
-              )
-              try:
-                  with connection.cursor() as cursor:
-                      sql = "INSERT INTO logs(message) VALUES(%s)"
-                      cursor.execute(sql, ("Lambda invoked",))
-                      connection.commit()
-                  return {"status": "success"}
-              except Exception as e:
-                  return {"status": "error", "message": str(e)}
-              finally:
-                  connection.close()
+      #     DB_HOST = os.environ['DB_HOST']
+      #     DB_USER = os.environ['DB_USER']
+      #     DB_PASSWORD = os.environ['DB_PASSWORD']
+      #     DB_NAME = os.environ['DB_NAME']
+
+      #     def handler(event, context):
+      #         connection = pymysql.connect(
+      #             host=DB_HOST,
+      #             user=DB_USER,
+      #             password=DB_PASSWORD,
+      #             database=DB_NAME,
+      #             connect_timeout=5
+      #         )
+      #         try:
+      #             with connection.cursor() as cursor:
+      #                 sql = "INSERT INTO logs(message) VALUES(%s)"
+      #                 cursor.execute(sql, ("Lambda invoked",))
+      #                 connection.commit()
+      #             return {"status": "success"}
+      #         except Exception as e:
+      #             return {"status": "error", "message": str(e)}
+      #         finally:
+      #             connection.close()
 
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -1446,6 +1475,15 @@ Resources:
                 - lambda.amazonaws.com
             Action:
               - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 's3:*'
+                Resource: '*'
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
         - arn:aws:iam::aws:policy/AmazonRDSFullAccess
@@ -1454,6 +1492,21 @@ Resources:
 
 
 
+  ##########################
+  # PyMySQL Lambda Layer   #
+  ##########################
+  PymysqlLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: pymysql-layer
+      Description: PyMySQL for Lambda
+      Content:
+        S3Bucket: !Ref LambdaArtifactsS3BucketName
+        S3Key: pymysql-layer.zip
+      CompatibleRuntimes:
+        - python3.11
+
+      
 Outputs:
   LoadBalancerName:
     Description: LoadBalancerName
