@@ -124,3 +124,85 @@ aws route53 list-hosted-zones \
   --query "HostedZones[?Name=='kampli.co.uk.'].Id" \
   --output text
 
+
+
+
+“Refactor my template: remove DB from ASG”
+
+“Add DB replicas + GTID replication scripts”
+
+“ProxySQL full CloudFormation config”
+
+“Orchestrator + ProxySQL integration hooks”
+
+“End-to-end failover test plan”
+
+sudo dnf install -y mariadb105
+
+
+nc -vz 10.1.101.191 3306
+
+
+sudo dnf install -y mariadb105
+mysql -h 10.1.101.191 -u wpuser -p wpkampli00
+
+
+mysql -h 10.1.101.191 -u wpuser -pwpkampli00
+
+mysql -h 10.1.101.191 -u wpuser -pwpkampli00
+
+mysql -h 10.1.101.191 -u wpuser --password=wpkampli00
+
+mysql -u wpuser --password=wpkampli00
+
+mysql -u wpuser -pwpkampli00
+
+
+DBRootPassword=rootkampli00
+WordPressDBName=wordpressdb
+WordPressDBUser=wpuser
+WordPressDBPassword=wpkampli00
+
+mysql -u ${WordPressDBUser} -p${WordPressDBPassword}
+
+mysql -u root -p${DBRootPassword}
+
+
+
+php -d memory_limit=-1 composer.phar require aws/aws-sdk-php
+
+php -d memory_limit=-1 composer-setup.php require aws/aws-sdk-php
+
+
+sudo -s 
+cp -f /var/www/html/index.php /var/www/html/php_bak_index.php 
+
+cp -f /tmp/wordpress/index.php /var/www/html/wp_index.php
+
+
+chown -R apache:apache /var/www/html
+                find /var/www/html -type d -exec chmod 755 {} \;
+                find /var/www/html -type f -exec chmod 644 {} \;
+
+find / -name wordpress 2>/dev//null
+
+kampli.co.uk/lambda_invoke.php
+
+cp /tmp/wordpress/index.php /var/www/html/wp_index.php
+
+export AWS_REGION=eu-west-2
+
+
+journalctl -t cfn-init
+
+sudo mkdir -p /etc/systemd/system/httpd.service.d
+sudo tee /etc/systemd/system/httpd.service.d/aws-env.conf <<'EOF'
+[Service]
+Environment="AWS_REGION=eu-west-2"
+Environment="AWS_DEFAULT_REGION=eu-west-2"
+EOF
+
+sudo systemctl daemon-reexec
+sudo systemctl restart httpd
+sudo systemctl show httpd --property=Environment
+

@@ -805,7 +805,7 @@ Resources:
 
                 $client = new LambdaClient([
                     'version' => 'latest',
-                    'region'  => getenv('AWS_REGION')
+                    'region'  => '${AWS::Region}'
                 ]);
 
                 try {
