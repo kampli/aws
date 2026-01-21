@@ -1166,49 +1166,46 @@ Resources:
     Type: AWS::EC2::Instance
     DependsOn:
       - DBNetworkInterface
-    Properties:
-      InstanceType: t2.micro
-      ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
-      KeyName: !Ref KeyName
-      # SubnetId: !Ref DBPrivateSubnet1
-      # SecurityGroupIds:
-      #   - !Ref DBInstanceSG
-      IamInstanceProfile: !Ref EC2InstanceProfile
-      NetworkInterfaces:
-        - NetworkInterfaceId: !Ref DBNetworkInterface
-          DeviceIndex: 0
-      Tags:
-        - Key: Name
-          Value: MariaDB-Primary
-      UserData:
-        Fn::Base64: !Sub |
-            #!/bin/bash -xe
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT30M
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          default:
+            - configure
+            - cfn-hup
+        configure:
+          commands:
+            01_install_mariadb:
+              command: |
+                #!/bin/bash -xe
+                #TODO check why the packages are not installed via config:packages:dnf
+                #set -x for debug only not for production.
+                set -x
+                dnf upgrade -y
+                dnf install -y mariadb105-server
 
-            #set -x for debug only not for production.
-            set -x
+                systemctl stop mariadb || true
 
-            dnf install -y mariadb105-server
+                mkfs.xfs /dev/xvdf || true
+                mkdir -p /var/lib/mysql
+                mount /dev/xvdf /var/lib/mysql
+                echo "/dev/xvdf /var/lib/mysql xfs defaults,nofail 0 2" >> /etc/fstab
 
-            systemctl stop mariadb || true
+                rm -rf /var/lib/mysql/*
+                chown -R mysql:mysql /var/lib/mysql
 
-            mkfs.xfs /dev/xvdf || true
-            mkdir -p /var/lib/mysql
-            mount /dev/xvdf /var/lib/mysql
-            echo "/dev/xvdf /var/lib/mysql xfs defaults,nofail 0 2" >> /etc/fstab
+                mariadb-install-db --user=mysql --datadir=/var/lib/mysql
 
-            rm -rf /var/lib/mysql/*
-            chown -R mysql:mysql /var/lib/mysql
+                sed -i 's/^bind-address.*/bind-address=0.0.0.0/' /etc/my.cnf.d/mariadb-server.cnf
 
-            mariadb-install-db --user=mysql --datadir=/var/lib/mysql
-
-            sed -i 's/^bind-address.*/bind-address=0.0.0.0/' /etc/my.cnf.d/mariadb-server.cnf
-
-            systemctl enable mariadb
-            systemctl start mariadb
-            # 03_secure_mariadb:
-            #   command: !Sub |
-            #     #!/bin/bash
-            set -e
+                systemctl enable mariadb
+                systemctl start mariadb
+            03_secure_mariadb:
+              command: !Sub |
+                #!/bin/bash -x
+                set -x
                 # DBRootPassword=rootkampli00
                 # WordPressDBName=wordpressdb
                 # WordPressDBUser=wpuser
@@ -1259,8 +1256,8 @@ Resources:
                   FLUSH PRIVILEGES;
                 "
 
-            # 04_create_wordpress_db:
-            #   command: !Sub |
+            04_create_wordpress_db:
+              command: !Sub |
                 mysql -u root --password=${DBRootPassword} -e "
                   CREATE DATABASE IF NOT EXISTS ${WordPressDBName};
                   CREATE USER IF NOT EXISTS '${WordPressDBUser}'@'%'
@@ -1270,10 +1267,86 @@ Resources:
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     message VARCHAR(255),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                   ); 
-                   GRANT ALL PRIVILEGES ON ${WordPressDBName}.* TO '${WordPressDBUser}'@'%';
+                  ); 
+                  GRANT ALL PRIVILEGES ON ${WordPressDBName}.* TO '${WordPressDBUser}'@'%';
                   FLUSH PRIVILEGES;
                 "
+          services:
+            systemd:
+              mariadb:
+                enabled: true
+                ensureRunning: true          
+        cfn-hup:
+          files:
+            /etc/cfn/cfn-hup.conf:
+              mode: "0400"
+              owner: root
+              group: root
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=5
+
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              mode: "0400"
+              owner: root
+              group: root
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.DBInstance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init \
+                  --stack ${AWS::StackName} \
+                  --resource DBInstance \
+                  --region ${AWS::Region} \
+                  --configsets default
+                runas=root
+
+          services:
+            systemd:
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+
+    Properties:
+      InstanceType: t2.micro
+      ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+      KeyName: !Ref KeyName
+      # SubnetId: !Ref DBPrivateSubnet1
+      # SecurityGroupIds:
+      #   - !Ref DBInstanceSG
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      NetworkInterfaces:
+        - NetworkInterfaceId: !Ref DBNetworkInterface
+          DeviceIndex: 0
+      Tags:
+        - Key: Name
+          Value: MariaDB-Primary
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+
+          
+          dnf install -y aws-cfn-bootstrap
+
+          /opt/aws/bin/cfn-init \
+            --stack ${AWS::StackName} \
+            --resource DBInstance \
+            --region ${AWS::Region} \
+            --configsets default
+
+          INIT_EXIT_CODE=$?
+
+          /opt/aws/bin/cfn-signal \
+            --exit-code $INIT_EXIT_CODE \
+            --stack ${AWS::StackName} \
+            --resource DBInstance \
+            --region ${AWS::Region}
+          
+          exit $INIT_EXIT_CODE
+
+  
 
   DBDataVolume:
     Type: AWS::EC2::Volume
