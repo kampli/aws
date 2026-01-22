@@ -5,6 +5,8 @@ import traceback
 import socket
 import requests
 import urllib.request
+import json
+
 
 # Configure logging
 logger = logging.getLogger()
@@ -82,6 +84,16 @@ def handler(event, context):
 
         az = get_az()
         az_url_lib = get_az_urllib()
+        print(json.dumps(event))
+        json_dump = json.dumps(event)
+
+
+        ec2_metadata = event.get('ec2_metadata', {})
+
+        ec2_az = ec2_metadata.get('availability_zone')
+        ec2_region = ec2_metadata.get('region')
+        ec2_instance_id = ec2_metadata.get('instance_id')
+        ec2_private_ip = ec2_metadata.get('private_ip')
 
         with connection.cursor() as cursor:
             # 1️⃣ Count rows before insert
@@ -104,10 +116,17 @@ def handler(event, context):
             "row_count_before": before_count,
             "row_count_after": after_count,
             "hostname": hostname,
-            "availability_zone": az,
             "availability_zone_url_lib": az_url_lib,
             "LAMBDA_AWS_REGION": LAMBDA_AWS_REGION,
-            "LAMBDA_AWS_STACK": LAMBDA_AWS_STACK
+            "LAMBDA_AWS_STACK": LAMBDA_AWS_STACK,
+            "ec2_metadata": {
+                "ec2_az": ec2_az,
+                "ec2_region": ec2_region,
+                "ec2_instance_id": ec2_instance_id,
+                "ec2_private_ip": ec2_private_ip
+            },
+            "json_dump": json_dump,
+            "availability_zone": az
         }
 
     except Exception as e:
