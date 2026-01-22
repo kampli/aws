@@ -1492,6 +1492,7 @@ Resources:
           DB_USER: wpuser
           DB_PASSWORD: !Ref WordPressDBPassword
           DB_NAME: !Ref WordPressDBName
+          AWS_REGION: !Ref AWS::Region
       VpcConfig:
         SubnetIds:
           - !Ref PrivateSubnet1
