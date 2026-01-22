@@ -206,3 +206,55 @@ sudo systemctl daemon-reexec
 sudo systemctl restart httpd
 sudo systemctl show httpd --property=Environment
 
+
+
+mkdir python
+pip install pymysql -t python
+pip install requests -t python
+
+zip -r pymysql-layer.zip python
+
+
+zip lambda_function.zip lambda_function.py
+
+
+
+zip -r pymysql-layer.zip python
+cd lambda
+zip -r lambda.zip lambda_function.py
+cd ..
+
+aws cloudformation package \
+    --template-file aws_CF_LAMP_Template.yaml \
+    --s3-bucket lambda-artifacts-725673811658-eu-west-2 \
+    --output-template-file lamp-packaged-template.yaml
+
+
+aws cloudformation deploy --template-file \
+    /Users/kampli/workspace/Barclays/20260105_AWS_LampServer/aws/lamp-packaged-template.yaml \
+    --stack-name lamp-stack \
+    --capabilities CAPABILITY_NAMED_IAM \
+    --parameter-overrides KeyName=testkeypair \
+                     DBRootPassword=kampli00 \
+                     HostedZoneId=${HOSTZONEID}
+
+
+aws s3 mb --region eu-west-2 s3://lamp-lambda-artifacts-725673811658-eu-west-2
+
+aws s3 rm s3://lamp-lambda-artifacts-725673811658-eu-west-2/lambda.zip
+aws s3 cp lambda/lambda.zip s3://lamp-lambda-artifacts-725673811658-eu-west-2/lambda.zip
+
+
+aws s3 rm s3://lamp-lambda-artifacts-725673811658-eu-west-2/pymysql-layer.zip
+
+aws s3 cp lambda/lambda.zip s3://lamp-lambda-artifacts-725673811658-eu-west-2/lambda.zip
+aws s3 cp layer/pymysql-layer.zip s3://lamp-lambda-artifacts-725673811658-eu-west-2/pymysql-layer.zip
+
+
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+
+
+curl -H "X-aws-ec2-metadata-token: ${TOKEN}" http://169.254.169.254/latest/meta-data/placement/availability-zone
+
+
+curl -H "X-aws-ec2-metadata-token: ${TOKEN}" http://169.254.169.254/latest/meta-data
