@@ -888,6 +888,76 @@ Resources:
               owner: root
               group: root
 
+            /var/www/html/ec2_index.php:
+              content: !Sub |
+                <?php
+                  require '/var/www/html/vendor/autoload.php';
+
+                  use Aws\Lambda\LambdaClient;
+                  use Aws\Exception\AwsException;
+
+                  /**
+                  * Get IMDSv2 token
+                  */
+                  function getImdsToken() {
+                      $ch = curl_init('http://169.254.169.254/latest/api/token');
+                      curl_setopt_array($ch, [
+                          CURLOPT_RETURNTRANSFER => true,
+                          CURLOPT_CUSTOMREQUEST  => 'PUT',
+                          CURLOPT_HTTPHEADER     => [
+                              'X-aws-ec2-metadata-token-ttl-seconds: 21600'
+                          ],
+                          CURLOPT_TIMEOUT => 2
+                      ]);
+                      return curl_exec($ch);
+                  }
+
+                  /**
+                  * Get EC2 metadata value
+                  */
+                  function getEc2Metadata($path, $token) {
+                      $ch = curl_init("http://169.254.169.254/latest/meta-data/$path");
+                      curl_setopt_array($ch, [
+                          CURLOPT_RETURNTRANSFER => true,
+                          CURLOPT_HTTPHEADER     => [
+                              "X-aws-ec2-metadata-token: $token"
+                          ],
+                          CURLOPT_TIMEOUT => 2
+                      ]);
+                      return curl_exec($ch);
+                  }
+
+                  $token = getImdsToken();
+
+                  $metadata = [
+                      'availability_zone' => getEc2Metadata('placement/availability-zone', $token),
+                      'region'            => getEc2Metadata('placement/region', $token),
+                      'instance_id'       => getEc2Metadata('instance-id', $token),
+                      'private_ip'        => getEc2Metadata('local-ipv4', $token),
+                  ];
+
+                  
+
+                  try {
+                      
+
+                      $response = $metadata
+
+                      echo "<h2>Welcome to EC2 </h2>";
+                      echo "<pre>" . print_r($response, true) . "</pre>";
+
+                  } catch (AwsException $e) {
+                      echo "<h2>Error at EC2 home</h2>";
+                      echo "<pre>" . $e->getMessage() . "</pre>";
+                  }
+
+                  phpinfo();
+                ?>
+
+              mode: "0644"
+              owner: root
+              group: root
+
           commands:
             01_permissions:
               command: |
@@ -934,84 +1004,24 @@ Resources:
                 # systemctl start mariadb
                 # until mysqladmin ping --silent; do sleep 2; done
 
-            # 03_secure_mariadb:
-            #   command: !Sub |
-            #     #!/bin/bash
-            #     set -e
-
-            #     # Wait for MariaDB
-            #     until mysqladmin ping --silent; do
-            #       sleep 2
-            #     done
-
-            #     # Determine how to connect as root
-            #     if mysql -u root -e "SELECT 1" >/dev/null 2>&1; then
-            #       MYSQL="mysql -u root"
-            #     elif mysql -u root -p"${DBRootPassword}" -e "SELECT 1" >/dev/null 2>&1; then
-            #       MYSQL="mysql -u root -p${DBRootPassword}"
-            #     else
-            #       echo "ERROR: Unable to authenticate to MariaDB as root"
-            #       exit 1
-            #     fi
-
-            #     # Check if password already matches (idempotent)
-            #     PASSWORD_OK=$($MYSQL -Nse "
-            #       SELECT COUNT(*) FROM mysql.user
-            #       WHERE User='root'
-            #         AND Host='localhost'
-            #         AND authentication_string = PASSWORD('${DBRootPassword}');
-            #     ")
-
-            #     if [ "$PASSWORD_OK" -eq 0 ]; then
-            #       echo "Setting MariaDB root password"
-            #       $MYSQL -e "
-            #         ALTER USER 'root'@'localhost' IDENTIFIED BY '${DBRootPassword}';
-            #         FLUSH PRIVILEGES;
-            #       "
-            #     else
-            #       echo "MariaDB root password already set — skipping"
-            #     fi
-
-                
-            #     #mysql -e "ALTER USER IF EXISTS 'root'@'localhost' IDENTIFIED BY '${DBRootPassword}'; FLUSH PRIVILEGES;"
-            #     mysql -u root --password=${DBRootPassword} -e "
-            #       DELETE FROM mysql.user WHERE User='';
-            #       DROP DATABASE IF EXISTS test;
-            #       FLUSH PRIVILEGES;
-            #     "
-
-            # 04_create_wordpress_db:
-            #   command: !Sub |
-            #     mysql -u root --password=${DBRootPassword} -e "
-            #       CREATE DATABASE IF NOT EXISTS ${WordPressDBName};
-            #       CREATE USER IF NOT EXISTS '${WordPressDBUser}'@'localhost'
-            #         IDENTIFIED BY '${WordPressDBPassword}';
-            #       GRANT ALL PRIVILEGES ON ${WordPressDBName}.* TO '${WordPressDBUser}'@'localhost';
-            #       FLUSH PRIVILEGES;
-            #     "
-
             05_install_wordpress:
               command: |
                 #set -x for debug only not for production.
                 set -x
+                WEB_ROOT="/var/www/html"
+                INDEX_FILE="$WEB_ROOT/index.php"
+                mkdir -p "$WEB_ROOT"
+
                 cd /tmp
                 if [ ! -d /var/www/html/wp-admin ]; then
                   wget https://wordpress.org/latest.tar.gz
                   tar -xzf latest.tar.gz
                   cp -r wordpress/* /var/www/html/
                 fi
-
+                
                 cp "/tmp/wordpress/index.php" "$WEB_ROOT/wp_index.php"
 
-
-                WEB_ROOT="/var/www/html"
-                INDEX_FILE="$WEB_ROOT/index.php"
-
-                # Ensure web root exists
-                mkdir -p "$WEB_ROOT"
-
-                
-                
+                cp -f "$WEB_ROOT/ec2_index.php" "$WEB_ROOT/index.php"
 
                 # Create index.php only if it does not exist
                 echo '<?php phpinfo(); ?>' > "$INDEX_FILE"
@@ -1542,42 +1552,10 @@ Resources:
           - !Ref PrivateSubnet2
           - !Ref PrivateSubnet3
         SecurityGroupIds:
-          # - !Ref Ec2SecurityGroup
           - !Ref LambdaDBSecurityGroup
       Code:
-        # S3Bucket: PLACEHOLDER
-        # S3Key: lambda.zip
         S3Bucket: !Ref LambdaArtifactsS3BucketName
         S3Key: lambda.zip
-
-      # Code:
-      #   ZipFile: |
-      #     import pymysql
-      #     import os
-
-      #     DB_HOST = os.environ['DB_HOST']
-      #     DB_USER = os.environ['DB_USER']
-      #     DB_PASSWORD = os.environ['DB_PASSWORD']
-      #     DB_NAME = os.environ['DB_NAME']
-
-      #     def handler(event, context):
-      #         connection = pymysql.connect(
-      #             host=DB_HOST,
-      #             user=DB_USER,
-      #             password=DB_PASSWORD,
-      #             database=DB_NAME,
-      #             connect_timeout=5
-      #         )
-      #         try:
-      #             with connection.cursor() as cursor:
-      #                 sql = "INSERT INTO logs(message) VALUES(%s)"
-      #                 cursor.execute(sql, ("Lambda invoked",))
-      #                 connection.commit()
-      #             return {"status": "success"}
-      #         except Exception as e:
-      #             return {"status": "error", "message": str(e)}
-      #         finally:
-      #             connection.close()
 
   LambdaExecutionRole:
     Type: AWS::IAM::Role
