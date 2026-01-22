@@ -939,13 +939,9 @@ Resources:
                   
 
                   try {
-                      
-
                       $response = $metadata
-
                       echo "<h2>Welcome to EC2 </h2>";
                       echo "<pre>" . print_r($response, true) . "</pre>";
-
                   } catch (AwsException $e) {
                       echo "<h2>Error at EC2 home</h2>";
                       echo "<pre>" . $e->getMessage() . "</pre>";
@@ -1022,10 +1018,6 @@ Resources:
                 cp "/tmp/wordpress/index.php" "$WEB_ROOT/wp_index.php"
 
                 cp -f "$WEB_ROOT/ec2_index.php" "$WEB_ROOT/index.php"
-
-                # Create index.php only if it does not exist
-                echo '<?php phpinfo(); ?>' > "$INDEX_FILE"
-                
 
             06_configure_wp:
               command: !Sub |
@@ -1136,7 +1128,7 @@ Resources:
                 [main]
                 stack=${AWS::StackId}
                 region=${AWS::Region}
-                interval=2
+                interval=1
 
             /etc/cfn/hooks.d/cfn-auto-reloader.conf:
               mode: "0400"
