@@ -817,18 +817,59 @@ Resources:
                 use Aws\Lambda\LambdaClient;
                 use Aws\Exception\AwsException;
 
+                /**
+                * Get IMDSv2 token
+                */
+                function getImdsToken() {
+                    $ch = curl_init('http://169.254.169.254/latest/api/token');
+                    curl_setopt_array($ch, [
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_CUSTOMREQUEST  => 'PUT',
+                        CURLOPT_HTTPHEADER     => [
+                            'X-aws-ec2-metadata-token-ttl-seconds: 21600'
+                        ],
+                        CURLOPT_TIMEOUT => 2
+                    ]);
+                    return curl_exec($ch);
+                }
+
+                /**
+                * Get EC2 metadata value
+                */
+                function getEc2Metadata($path, $token) {
+                    $ch = curl_init("http://169.254.169.254/latest/meta-data/$path");
+                    curl_setopt_array($ch, [
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_HTTPHEADER     => [
+                            "X-aws-ec2-metadata-token: $token"
+                        ],
+                        CURLOPT_TIMEOUT => 2
+                    ]);
+                    return curl_exec($ch);
+                }
+
+                $token = getImdsToken();
+
+                $metadata = [
+                    'availability_zone' => getEc2Metadata('placement/availability-zone', $token),
+                    'region'            => getEc2Metadata('placement/region', $token),
+                    'instance_id'       => getEc2Metadata('instance-id', $token),
+                    'private_ip'        => getEc2Metadata('local-ipv4', $token),
+                ];
+
                 $client = new LambdaClient([
                     'version' => 'latest',
-                    'region'  => '${AWS::Region}'
+                    'region'  => $metadata['region']   // dynamically use instance region
                 ]);
 
                 try {
                     $result = $client->invoke([
-                        'FunctionName' => 'LAMP-DB-Logger',
-                        'InvocationType' => 'RequestResponse',
-                        'Payload' => json_encode([
-                            'source' => 'php-web',
-                            'timestamp' => time()
+                        'FunctionName'   => 'LAMP-DB-Logger',
+                        'InvocationType'=> 'RequestResponse',
+                        'Payload'       => json_encode([
+                            'source'    => 'php-web',
+                            'timestamp' => time(),
+                            'ec2'       => $metadata
                         ])
                     ]);
 
@@ -842,6 +883,7 @@ Resources:
                     echo "<pre>" . $e->getMessage() . "</pre>";
                 }
                 ?>
+
               mode: "0644"
               owner: root
               group: root
@@ -1492,7 +1534,8 @@ Resources:
           DB_USER: wpuser
           DB_PASSWORD: !Ref WordPressDBPassword
           DB_NAME: !Ref WordPressDBName
-          AWS_REGION: !Ref AWS::Region
+          LAMBDA_AWS_REGION: !Ref AWS::Region
+          LAMBDA_AWS_STACK: !Ref AWS::StackName
       VpcConfig:
         SubnetIds:
           - !Ref PrivateSubnet1
