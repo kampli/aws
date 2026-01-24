@@ -207,19 +207,16 @@ sudo systemctl restart httpd
 sudo systemctl show httpd --property=Environment
 
 
-
-mkdir python
+mkdir -p layer
+cd layer
+mkdir -p python
 pip install pymysql -t python
 pip install requests -t python
 
 zip -r pymysql-layer.zip python
 
 
-zip lambda_function.zip lambda_function.py
 
-
-
-zip -r pymysql-layer.zip python
 cd lambda
 zip -r lambda.zip lambda_function.py
 cd ..
@@ -245,9 +242,11 @@ aws s3 rm s3://lamp-lambda-artifacts-725673811658-eu-west-2/lambda.zip
 aws s3 cp lambda/lambda.zip s3://lamp-lambda-artifacts-725673811658-eu-west-2/lambda.zip
 
 
-aws s3 rm s3://lamp-lambda-artifacts-725673811658-eu-west-2/pymysql-layer.zip
 
 aws s3 cp lambda/lambda.zip s3://lamp-lambda-artifacts-725673811658-eu-west-2/lambda.zip
+
+aws s3 rm s3://lamp-lambda-artifacts-725673811658-eu-west-2/pymysql-layer.zip
+
 aws s3 cp layer/pymysql-layer.zip s3://lamp-lambda-artifacts-725673811658-eu-west-2/pymysql-layer.zip
 
 
