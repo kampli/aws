@@ -198,7 +198,7 @@ function updateLambdaOnS3() {
 
     bucketExists=$(aws s3 ls ${lambdaS3BucketName} 2>&1 | grep -io "NoSuchBucket")
 
-    if [ "${bucketExists}" != ""] ; then
+    if [ "${bucketExists}" != "" ] ; then
         aws s3 mb --region eu-west-2 s3://${lambdaS3BucketName}
     fi
     
@@ -212,6 +212,7 @@ function updateLambdaOnS3() {
     pip install pymysql -t python
     pip install requests -t python
 
+    rm pymysql-layer.zip
     zip -r pymysql-layer.zip python
     cd ..
 
