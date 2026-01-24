@@ -4,6 +4,7 @@ export AWS_PROFILE=kamplidev
 #export AWS_PROFILE=default
 
 
+export lambdaS3BucketName="lamp-lambda-artifacts-725673811658-eu-west-2";
 
 function listFunctions() {
 
@@ -187,6 +188,37 @@ function openURLs() {
                 https://${publicDNS_EC2}
                 "
     open "http://${ipAddress_EC2}" "https://${ipAddress_EC2}" http://${publicDNS_EC2} https://${publicDNS_EC2}
+}
+
+function updateLambdaOnS3() {
+    cd lambda
+    rm -f lambda.zip
+    zip -r lambda.zip *.py
+    cd ..
+
+    bucketExists=$(aws s3 ls ${lambdaS3BucketName} 2>&1 | grep -io "NoSuchBucket")
+
+    if [ "${bucketExists}" != ""] ; then
+        aws s3 mb --region eu-west-2 s3://${lambdaS3BucketName}
+    fi
+    
+    aws s3 rm s3://${lambdaS3BucketName}/lambda.zip
+    aws s3 cp lambda/lambda.zip s3://${lambdaS3BucketName}/lambda.zip
+
+
+    mkdir -p layer
+    cd layer
+    mkdir -p python
+    pip install pymysql -t python
+    pip install requests -t python
+
+    zip -r pymysql-layer.zip python
+    cd ..
+
+    aws s3 rm s3://${lambdaS3BucketName}/pymysql-layer.zip
+
+    aws s3 cp layer/pymysql-layer.zip s3://${lambdaS3BucketName}/pymysql-layer.zip
+
 }
 
 if [ $# -gt 0 ] ; then
