@@ -34,7 +34,7 @@ def get_az():
 
         return az
     except Exception as e:
-        return "unknown" + traceback.format_exc()
+        return "Printing a Stack trace: " + traceback.format_exc()
     
 
 def get_az_urllib():
@@ -126,7 +126,7 @@ def handler(event, context):
                 "ec2_private_ip": ec2_private_ip
             },
             "json_dump": json_dump,
-            "availability_zone": az
+            "StackTrace": az
         }
 
     except Exception as e:

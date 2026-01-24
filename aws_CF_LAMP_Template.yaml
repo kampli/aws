@@ -734,7 +734,10 @@ Resources:
             Tags:
               - Key: Name
                 Value: !Sub "${AWS::StackName}_private-subnet-EC2"
-
+              - Key: AutoStop
+                Value: true
+              - Key: Environment
+                Value: dev
         UserData: 
           Fn::Base64:
             !Sub |
@@ -939,7 +942,7 @@ Resources:
                   
 
                   try {
-                      $response = $metadata
+                      $response = $metadata;
                       echo "<h2>Welcome to EC2 </h2>";
                       echo "<pre>" . print_r($response, true) . "</pre>";
                   } catch (AwsException $e) {
@@ -1193,6 +1196,13 @@ Resources:
         # - !Ref HttpsTargetGroup
       HealthCheckType: ELB
       HealthCheckGracePeriod: 300
+      Tags:
+        - Key: AutoStop
+          Value: true
+          PropagateAtLaunch: true
+        - Key: Environment
+          Value: dev
+          PropagateAtLaunch: true
 
   TargetTrackingScalingPolicy:
     Type: AWS::AutoScaling::ScalingPolicy
@@ -1367,6 +1377,10 @@ Resources:
       Tags:
         - Key: Name
           Value: MariaDB-Primary
+        - Key: AutoStop
+          Value: true
+        - Key: Environment
+          Value: dev
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash -xe
@@ -1593,7 +1607,100 @@ Resources:
       CompatibleRuntimes:
         - python3.11
 
-      
+  AutoStopLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: AutoStopLambda
+      Runtime: python3.11
+      Handler: lambda_autostop.handler
+      Role: !GetAtt AutoStartStopLambdaRole.Arn
+      Timeout: 60
+      Layers:
+        - !Ref PymysqlLayer
+      Code:
+        S3Bucket: !Ref LambdaArtifactsS3BucketName
+        S3Key: lambda.zip
+
+  AutoStartStopLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: AutoStopPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                  - autoscaling:DescribeAutoScalingGroups
+                  - autoscaling:UpdateAutoScalingGroup
+                Resource: "*"
+
+
+  AutoStopRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: AutoStoptRule
+      Description: stop non-prod resources in the evening
+      ScheduleExpression: cron(0 19 ? * MON-FRI *)
+      Targets:
+        - Arn: !GetAtt AutoStopLambda.Arn
+          Id: AutoStopTarget
+
+
+  AutoStopLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AutoStopLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt AutoStopRule.Arn
+
+
+  AutoStartLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: AutoStartLambda
+      Runtime: python3.11
+      Handler: lambda_autostart.handler
+      Role: !GetAtt AutoStartStopLambdaRole.Arn
+      Timeout: 60
+      Layers:
+        - !Ref PymysqlLayer
+      Code:
+        S3Bucket: !Ref LambdaArtifactsS3BucketName
+        S3Key: lambda.zip
+
+  AutoStartRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: AutoStartRule
+      Description: Start non-prod resources in the morning
+      ScheduleExpression: cron(0 8 ? * MON-FRI *)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt AutoStartLambda.Arn
+          Id: AutoStartLambdaTarget
+
+  AutoStartLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AutoStartLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt AutoStartRule.Arn
+
 Outputs:
   LoadBalancerName:
     Description: LoadBalancerName
