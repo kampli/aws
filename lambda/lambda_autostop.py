@@ -1,4 +1,5 @@
 import boto3
+import json
 
 ec2 = boto3.client('ec2')
 asg = boto3.client('autoscaling')

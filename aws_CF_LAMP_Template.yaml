@@ -602,8 +602,12 @@ Resources:
       VpcId: !Ref VPC
       Port: 80
       Protocol: HTTP
+      TargetType: instance
       HealthCheckPath: /
       HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
       Matcher:
         HttpCode: 200-399
       # Targets:
@@ -640,8 +644,12 @@ Resources:
         - CertificateArn: !Ref ALBCertificate
         # - CertificateArn: arn:aws:acm:eu-west-2:725673811658:certificate/ce0f8756-332a-49c1-ab9a-a4956ceb560b
       DefaultActions:
-        - Type: forward
+        - Order: 1
+          Type: forward
           TargetGroupArn: !Ref TargetGroup
+        - Order: 2
+          Type: forward
+          TargetGroupArn: !Ref WakeLambdaTargetGroup          
 
   AlbDnsRecord:
     Type: AWS::Route53::RecordSet
@@ -1181,9 +1189,9 @@ Resources:
 
     Properties:
       AutoScalingGroupName: LampAutoScalingGroup
-      DesiredCapacity: 1
+      DesiredCapacity: 0
       MaxSize: 3
-      MinSize: 1
+      MinSize: 0
       VPCZoneIdentifier:
         - !Ref PrivateSubnet1
         - !Ref PrivateSubnet2
@@ -1701,6 +1709,71 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt AutoStartRule.Arn
 
+  WakeAutoScalingLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: WakeAutoScalingLambda
+      Runtime: python3.11
+      Handler: lambda_auto_asgwake.handler
+      Role: !GetAtt AutoStartStopLambdaRole.Arn
+      Timeout: 60
+      Layers:
+        - !Ref PymysqlLayer
+      Code:
+        S3Bucket: !Ref LambdaArtifactsS3BucketName
+        S3Key: lambda.zip
+
+  WakeLambdaTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: lambda
+
+  WakeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WakeAutoScalingLambda
+      Action: lambda:InvokeFunction
+      Principal: elasticloadbalancing.amazonaws.com
+
+  SleepAutoScalingLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: SleepAutoScalingLambda
+      Runtime: python3.11
+      Handler: lambda_auto_asg_sleep.handler
+      Role: !GetAtt AutoStartStopLambdaRole.Arn
+      Timeout: 60
+      Layers:
+        - !Ref PymysqlLayer
+      Code:
+        S3Bucket: !Ref LambdaArtifactsS3BucketName
+        S3Key: lambda.zip
+
+
+  IdleRequestAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Stop ASG when idle
+      Namespace: AWS/ApplicationELB
+      MetricName: RequestCount
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt ApplicationLoadBalancer.LoadBalancerFullName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: LessThanOrEqualToThreshold
+      AlarmActions:
+        - !GetAtt SleepAutoScalingLambda.Arn
+
+  IdleStopLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SleepAutoScalingLambda
+      Action: lambda:InvokeFunction
+      Principal: cloudwatch.amazonaws.com
+
 Outputs:
   LoadBalancerName:
     Description: LoadBalancerName
@@ -1721,11 +1794,6 @@ Outputs:
     # Value: !Sub "http://${LampInstance.PublicDnsName}"
     # Value: !Sub "http://${NatGw1ElasticIP.PublicIp}"
     Value: !Sub "http://${ApplicationLoadBalancer.DNSName}"
-    
-
-  # DBPrivateHostedZoneId:
-  #   Description: Route53 Private Hosted Zone ID
-  #   Value: !Ref DBPrivateHostedZone
 
   DBPrivateIP:
     Description: Stable private IP of MariaDB
