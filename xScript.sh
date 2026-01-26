@@ -126,6 +126,8 @@ function deleteStack() {
 }
 
 function deleteStackLoop() {
+    echo "AWS_PROFILE == ${AWS_PROFILE}"
+    echo $(date)
     status=$(deleteStack)
     echo "status -- ${status}"
     isError=`echo ${status} | grep -i 'error'`
@@ -139,6 +141,23 @@ function deleteStackLoop() {
         isError=`echo ${status} | grep -i 'error'`
         echo "isError -- ${isError}"
     done
+}
+
+function packageNDeployStack() {
+
+    aws cloudformation package \
+        --template-file cloudformation/00_lamp_root.yaml \
+        --s3-bucket lamp-lambda-artifacts-725673811658-eu-west-2 \
+        --output-template-file cloudformation/packaged.yaml
+
+    aws cloudformation deploy \
+        --template-file /Users/kampli/workspace/Barclays/20260105_AWS_LampServer/aws/cloudformation/packaged.yaml \
+        --stack-name lamp-stack \
+        --capabilities CAPABILITY_NAMED_IAM \
+        --parameter-overrides \
+            Version=$(date +%s) \
+            HostedZoneId=${HOSTZONEID} \
+            KeyName=testkeypair
 }
 
 function getOutputs() {
