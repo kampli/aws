@@ -257,3 +257,47 @@ curl -H "X-aws-ec2-metadata-token: ${TOKEN}" http://169.254.169.254/latest/meta-
 
 
 curl -H "X-aws-ec2-metadata-token: ${TOKEN}" http://169.254.169.254/latest/meta-data
+
+
+aws cloudformation validate-template \
+  --template-body file://cloudformation/00_lamp_root.yaml 
+
+
+aws cloudformation validate-template \
+  --template-body file://cloudformation/packaged.yaml
+
+
+pip install cfn-lint
+cfn-lint cloudformation/00_lamp_root.yaml 
+
+cfn-lint cloudformation/packaged.yaml
+
+
+
+
+
+aws cloudformation package \
+  --template-file cloudformation/00_lamp_root.yaml \
+  --s3-bucket lamp-lambda-artifacts-725673811658-eu-west-2 \
+  --output-template-file cloudformation/packaged.yaml
+
+aws cloudformation deploy \
+  --template-file /Users/kampli/workspace/Barclays/20260105_AWS_LampServer/aws/cloudformation/packaged.yaml \
+  --stack-name lamp-stack \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+    Version=$(date +%s) \
+    HostedZoneId=${HOSTZONEID} \
+    KeyName=testkeypair
+
+
+
+cfn/
+├── root.yaml                # entry point
+├── network.yaml             # VPCs, subnets, routing, peering
+├── security.yaml            # security groups, IAM roles
+├── alb.yaml                 # ALB, listeners, certs, Route53
+├── compute.yaml             # ASG, LaunchTemplate, scaling
+├── database.yaml            # MariaDB EC2, volumes, ENI
+├── lambdas.yaml             # all Lambda functions + layers
+└── automation.yaml          # EventBridge, alarms, permissions

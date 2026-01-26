@@ -145,10 +145,11 @@ function deleteStackLoop() {
 
 function packageNDeployStack() {
 
+
     aws cloudformation package \
         --template-file cloudformation/00_lamp_root.yaml \
         --s3-bucket lamp-lambda-artifacts-725673811658-eu-west-2 \
-        --output-template-file cloudformation/packaged.yaml
+        --output-template-file cloudformation/packaged.yaml 2>&1
 
     aws cloudformation deploy \
         --template-file /Users/kampli/workspace/Barclays/20260105_AWS_LampServer/aws/cloudformation/packaged.yaml \
@@ -157,7 +158,25 @@ function packageNDeployStack() {
         --parameter-overrides \
             Version=$(date +%s) \
             HostedZoneId=${HOSTZONEID} \
-            KeyName=testkeypair
+            KeyName=testkeypair 2>&1
+}
+
+function packageNDeployStackLoop() {
+    echo "AWS_PROFILE == ${AWS_PROFILE}"
+    echo $(date)
+    status=$(packageNDeployStack)
+    echo "status -- ${status}"
+    isError=`echo ${status} | grep -i 'error'`
+    echo "isError -- ${isError}"
+    while [ "${isError}"  != "" ] 
+    do
+        echo "Sleeping.... zzz"
+        sleep 10
+        status=$(packageNDeployStack)
+        echo "status -- ${status}"
+        isError=`echo ${status} | grep -i 'error'`
+        echo "isError -- ${isError}"
+    done
 }
 
 function getOutputs() {
