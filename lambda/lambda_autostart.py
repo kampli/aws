@@ -12,7 +12,6 @@ def handler(event, context):
         Filters=[
             {'Name': 'tag:AutoStop', 'Values': ['true']},
             {'Name': 'instance-state-name', 'Values': ['stopped']}
-        ]
     )
 
     for r in instances.get('Reservations', []):
