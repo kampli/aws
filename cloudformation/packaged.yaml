@@ -1,0 +1,280 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Root stack - LAMP scale-to-zero architecture
+Parameters:
+  Version:
+    Type: String
+    Default: '1'
+  Environment:
+    Type: String
+    Default: dev
+  ArtifactsBucket:
+    Type: String
+    Default: lamp-lambda-artifacts-725673811658-eu-west-2
+    Description: S3 bucket containing nested CloudFormation templates and Lambda artifacts
+  ArtifactsPrefix:
+    Type: String
+    Default: cloudformation
+    Description: S3 prefix for CloudFormation templates (e.g. cfn/, cfn/v1/, dev/cfn/)
+  DomainName:
+    Type: String
+    Default: kampli.co.uk
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID for kampli.co.uk (e.g. Z123ABCXYZ)
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair for SSH access
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+    - t2.micro
+    - t3.micro
+    Description: EC2 instance type
+  DBRootPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Default: rootkampli00
+    Description: mysql DB root password
+  WordPressDBName:
+    Type: String
+    Default: wordpressdb
+  WordPressDBUser:
+    Type: String
+    Default: wpuser
+  WordPressDBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Default: wpkampli00
+  LambdaArtifactsS3BucketName:
+    Type: String
+    Default: lamp-lambda-artifacts-725673811658-eu-west-2
+    Description: Existing bucket name or new bucket name
+Resources:
+  NetworkStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/9e48cb337f60e909af0650e8ba129b1e.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        Version:
+          Ref: Version
+  Security:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/9fa5fa99151faa227af31c09fa15aad6.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        Version:
+          Ref: Version
+        VpcId:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.VpcId
+        DbVpcId:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.DbVpcId
+        VpcCIDR:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.VpcCIDR
+        DBVPCCIDR:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.DBVPCCIDR
+  AlbStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/0205f42b6011fa0da8e2cfed2577d191.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        Version:
+          Ref: Version
+        PublicSubnets:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.PublicSubnets
+        AlbSecurityGroup:
+          Fn::GetAtt:
+          - Security
+          - Outputs.AlbSecurityGroup
+        VpcId:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.VpcId
+        DbVpcId:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.DbVpcId
+        VpcCIDR:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.VpcCIDR
+        DBVPCCIDR:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.DBVPCCIDR
+        DomainName:
+          Ref: DomainName
+        HostedZoneId:
+          Ref: HostedZoneId
+  ComputeStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/44581d8fc7dbd704f8badc093344517c.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        Version:
+          Ref: Version
+        InstanceType:
+          Ref: InstanceType
+        KeyName:
+          Ref: KeyName
+        EC2InstanceProfile:
+          Fn::GetAtt:
+          - Security
+          - Outputs.EC2InstanceProfile
+        Ec2SecurityGroup:
+          Fn::GetAtt:
+          - Security
+          - Outputs.Ec2SecurityGroup
+        DBPrivateSubnet1:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.DBPrivateSubnet1
+        DBInstanceSG:
+          Fn::GetAtt:
+          - Security
+          - Outputs.DBInstanceSG
+        PrivateSubnets:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.PrivateSubnets
+        PrivateSubnet1:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.PrivateSubnet1
+        PrivateSubnet2:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.PrivateSubnet2
+        PrivateSubnet3:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.PrivateSubnet3
+        TargetGroup:
+          Fn::GetAtt:
+          - AlbStack
+          - Outputs.TargetGroup
+        DBRootPassword:
+          Ref: DBRootPassword
+        WordPressDBName:
+          Ref: WordPressDBName
+        WordPressDBUser:
+          Ref: WordPressDBUser
+        WordPressDBPassword:
+          Ref: WordPressDBPassword
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/f8a0ad63e8fd0ae4d129243f7a2c3ea0.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        Version:
+          Ref: Version
+        LambdaArtifactsS3BucketName:
+          Ref: LambdaArtifactsS3BucketName
+        LambdaExecutionRoleArn:
+          Fn::GetAtt:
+          - Security
+          - Outputs.LambdaExecutionRoleArn
+        DBNIPrimaryPrivateIpAddress:
+          Fn::GetAtt:
+          - ComputeStack
+          - Outputs.DBNIPrimaryPrivateIpAddress
+        DBRootPassword:
+          Ref: DBRootPassword
+        WordPressDBName:
+          Ref: WordPressDBName
+        WordPressDBUser:
+          Ref: WordPressDBUser
+        WordPressDBPassword:
+          Ref: WordPressDBPassword
+        PrivateSubnet1:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.PrivateSubnet1
+        PrivateSubnet2:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.PrivateSubnet2
+        PrivateSubnet3:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.PrivateSubnet3
+        PrivateSubnets:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.PrivateSubnets
+        LambdaDBSecurityGroup:
+          Fn::GetAtt:
+          - Security
+          - Outputs.LambdaDBSecurityGroup
+  AutoLambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/23f12a374282f66c165553fa33ba438d.template
+      Parameters:
+        Environment:
+          Ref: Environment
+        Version:
+          Ref: Version
+        PymysqlLayer:
+          Fn::GetAtt:
+          - LambdaStack
+          - Outputs.PymysqlLayer
+        LambdaArtifactsS3BucketName:
+          Ref: LambdaArtifactsS3BucketName
+        HttpsListener:
+          Fn::GetAtt:
+          - AlbStack
+          - Outputs.HttpsListener
+        ALBFullName:
+          Fn::GetAtt:
+          - AlbStack
+          - Outputs.ALBFullName
+        SystemsManagerEC2RoleArn:
+          Fn::GetAtt:
+          - Security
+          - Outputs.SystemsManagerEC2RoleArn
+Outputs:
+  LoadBalancerName:
+    Description: LoadBalancerName
+    Value:
+      Fn::GetAtt:
+      - AlbStack
+      - Outputs.ALBFullName
+  ALBPublicDNS:
+    Description: Public DNS of the LAMP Stack EC2
+    Value:
+      Fn::GetAtt:
+      - AlbStack
+      - Outputs.ALBPublicDNS
+  WebsiteURL:
+    Description: URL of the LAMP Stack
+    Value:
+      Fn::Sub: http://${AlbStack.Outputs.ALBPublicDNS}
+  DBPrivateIP:
+    Description: Stable private IP of MariaDB
+    Value:
+      Fn::GetAtt:
+      - ComputeStack
+      - Outputs.DBNIPrimaryPrivateIpAddress

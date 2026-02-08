@@ -1,0 +1,125 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ALB - LAMP compute
+
+Parameters:
+  Version:
+    Type: String
+    Default: "1"
+  Environment:
+    Type: String
+    Default: dev
+
+  LambdaArtifactsS3BucketName:
+    Type: String
+    Default: lamp-lambda-artifacts-725673811658-eu-west-2
+    Description: "Existing bucket name or new bucket name"
+  
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: LambdaExecutionRole.Arn
+  
+  DBNIPrimaryPrivateIpAddress:
+    Type: String
+    Description: DBNetworkInterface.PrimaryPrivateIpAddress
+
+  DBRootPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Default: rootkampli00
+    Description: mysql DB root password
+  
+  WordPressDBName:
+    Type: String
+    Default: wordpressdb
+
+  WordPressDBUser:
+    Type: String
+    Default: wpuser
+
+  WordPressDBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Default: wpkampli00
+
+  PrivateSubnets:
+    Type: CommaDelimitedList
+    Description: PrivateSubnets Private subnet IDs for ASG
+
+  PrivateSubnet1:
+    Type: String
+    Description: PrivateSubnet1
+  
+  PrivateSubnet2:
+    Type: String
+    Description: PrivateSubnet2
+  
+  PrivateSubnet3:
+    Type: String
+    Description: PrivateSubnet3
+  
+  LambdaDBSecurityGroup:
+    Type: String
+    Description: LambdaDBSecurityGroup
+
+  LambdaArtifactsS3BucketName:
+    Type: String
+    Default: lamp-lambda-artifacts-725673811658-eu-west-2
+    Description: "Existing bucket name or new bucket name"
+
+Resources:
+
+
+
+  ##########################
+  # PyMySQL Lambda Layer   #
+  ##########################
+  PymysqlLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: pymysql-layer
+      Description: !Sub "PyMySQL for Lambda version ${Version}"
+      Content:
+        S3Bucket: !Ref LambdaArtifactsS3BucketName
+        S3Key: pymysql-layer.zip
+      CompatibleRuntimes:
+        - python3.11
+
+
+  WordpressLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: LAMP-DB-Logger
+      Description: !Sub "WordpressLambda version ${Version}"
+      Runtime: python3.11
+      Handler: lambda_function.handler
+      Role: !Ref LambdaExecutionRoleArn
+      Timeout: 120
+      Layers:
+        - !Ref PymysqlLayer
+      Environment:
+        Variables:
+          DB_HOST: !Ref DBNIPrimaryPrivateIpAddress
+          DB_USER: !Ref WordPressDBUser
+          DB_PASSWORD: !Ref WordPressDBPassword
+          DB_NAME: !Ref WordPressDBName
+          LAMBDA_AWS_REGION: !Ref AWS::Region
+          LAMBDA_AWS_STACK: !Ref AWS::StackName
+      VpcConfig:
+        SubnetIds: 
+        # !Ref PrivateSubnets
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+          - !Ref PrivateSubnet3
+        SecurityGroupIds:
+          - !Ref LambdaDBSecurityGroup
+      Code:
+        S3Bucket: !Ref LambdaArtifactsS3BucketName
+        S3Key: lambda.zip
+
+
+Outputs:
+  
+  PymysqlLayer:
+    Value: !Ref PymysqlLayer

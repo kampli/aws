@@ -1,0 +1,349 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EC2 Image Builder Pipeline with AL2023, Lambda integration for Launch Template update and ASG Instance Refresh'
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID where the Image Builder infrastructure will run
+  
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet ID for Image Builder infrastructure
+  
+  LaunchTemplateId:
+    Type: String
+    Description: Launch Template ID to update with new AMI
+  
+  AutoScalingGroupName:
+    Type: String
+    Description: Auto Scaling Group name to trigger instance refresh
+
+Resources:
+  # IAM Role for EC2 Image Builder
+  ImageBuilderInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/EC2InstanceProfileForImageBuilder
+      Tags:
+        - Key: Name
+          Value: ImageBuilderInstanceRole
+
+  ImageBuilderInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref ImageBuilderInstanceRole
+
+  # IAM Role for Lambda Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: UpdateLaunchTemplateAndASG
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:CreateLaunchTemplateVersion
+                  - ec2:DescribeLaunchTemplateVersions
+                  - ec2:ModifyLaunchTemplate
+                  - ec2:DescribeImages
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - autoscaling:StartInstanceRefresh
+                  - autoscaling:DescribeAutoScalingGroups
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: ImageBuilderLambdaRole
+
+  # Lambda Function to update Launch Template and trigger ASG refresh
+  UpdateLaunchTemplateFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: UpdateLaunchTemplateAndRefreshASG
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      Environment:
+        Variables:
+          LAUNCH_TEMPLATE_ID: !Ref LaunchTemplateId
+          ASG_NAME: !Ref AutoScalingGroupName
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import os
+          from datetime import datetime
+          
+          ec2 = boto3.client('ec2')
+          autoscaling = boto3.client('autoscaling')
+          
+          def lambda_handler(event, context):
+              print(f"Received event: {json.dumps(event)}")
+              
+              launch_template_id = os.environ['LAUNCH_TEMPLATE_ID']
+              asg_name = os.environ['ASG_NAME']
+              
+              try:
+                  # Extract AMI ID from the event
+                  if 'detail' in event and 'outputResources' in event['detail']:
+                      amis = event['detail']['outputResources'].get('amis', [])
+                      if amis:
+                          new_ami_id = amis[0]['image']
+                          print(f"New AMI ID: {new_ami_id}")
+                      else:
+                          raise ValueError("No AMI found in event")
+                  else:
+                      raise ValueError("Invalid event structure")
+                  
+                  # Get AMI details
+                  ami_response = ec2.describe_images(ImageIds=[new_ami_id])
+                  ami_name = ami_response['Images'][0]['Name']
+                  
+                  # Create new launch template version with the new AMI
+                  response = ec2.create_launch_template_version(
+                      LaunchTemplateId=launch_template_id,
+                      SourceVersion='$Latest',
+                      VersionDescription=f'Updated with AMI {new_ami_id} - {ami_name}',
+                      LaunchTemplateData={
+                          'ImageId': new_ami_id
+                      }
+                  )
+                  
+                  new_version = response['LaunchTemplateVersion']['VersionNumber']
+                  print(f"Created launch template version: {new_version}")
+                  
+                  # Set the new version as default
+                  ec2.modify_launch_template(
+                      LaunchTemplateId=launch_template_id,
+                      DefaultVersion=str(new_version)
+                  )
+                  print(f"Set version {new_version} as default")
+                  
+                  # Trigger Auto Scaling Group instance refresh
+                  refresh_response = autoscaling.start_instance_refresh(
+                      AutoScalingGroupName=asg_name,
+                      Strategy='Rolling',
+                      Preferences={
+                          'MinHealthyPercentage': 90,
+                          'InstanceWarmup': 300
+                      }
+                  )
+                  
+                  refresh_id = refresh_response['InstanceRefreshId']
+                  print(f"Started instance refresh: {refresh_id}")
+                  
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps({
+                          'message': 'Successfully updated launch template and started ASG refresh',
+                          'amiId': new_ami_id,
+                          'launchTemplateVersion': new_version,
+                          'instanceRefreshId': refresh_id
+                      })
+                  }
+                  
+              except Exception as e:
+                  print(f"Error: {str(e)}")
+                  raise e
+
+  # EventBridge permission for Lambda
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref UpdateLaunchTemplateFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ImageBuilderEventRule.Arn
+
+  # Image Builder Component - Basic Configuration
+  ImageBuilderComponent:
+    Type: AWS::ImageBuilder::Component
+    Properties:
+      Name: AL2023-BasicConfig
+      Platform: Linux
+      Version: 1.0.0
+      Description: Basic configuration for AL2023
+      Data: |
+        name: AL2023 Basic Configuration
+        description: Install basic packages and configure AL2023
+        schemaVersion: 1.0
+        phases:
+          - name: build
+            steps:
+              - name: UpdateSystem
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - sudo dnf update -y
+              
+              - name: InstallBasicPackages
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - sudo dnf install -y vim wget curl htop
+              
+              - name: ConfigureSSM
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - sudo systemctl enable amazon-ssm-agent
+                    - sudo systemctl start amazon-ssm-agent
+          
+          - name: validate
+            steps:
+              - name: ValidateInstallation
+                action: ExecuteBash
+                inputs:
+                  commands:
+                    - echo "Validation complete"
+      Tags:
+        Name: AL2023-BasicConfig
+
+  # Image Recipe
+  ImageRecipe:
+    Type: AWS::ImageBuilder::ImageRecipe
+    Properties:
+      Name: AL2023-Recipe
+      Version: 1.0.0
+      ParentImage: !Sub 'arn:aws:imagebuilder:${AWS::Region}:aws:image/amazon-linux-2023-x86/x.x.x'
+      Components:
+        - ComponentArn: !Ref ImageBuilderComponent
+        - ComponentArn: !Sub 'arn:aws:imagebuilder:${AWS::Region}:aws:component/update-linux/x.x.x'
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            DeleteOnTermination: true
+            VolumeSize: 8
+            VolumeType: gp3
+      Tags:
+        Name: AL2023-Recipe
+
+  # Infrastructure Configuration
+  InfrastructureConfiguration:
+    Type: AWS::ImageBuilder::InfrastructureConfiguration
+    Properties:
+      Name: AL2023-Infrastructure
+      InstanceProfileName: !Ref ImageBuilderInstanceProfile
+      InstanceTypes:
+        - t3.medium
+      SubnetId: !Ref SubnetId
+      TerminateInstanceOnFailure: true
+      SnsTopicArn: !Ref ImageBuilderSNSTopic
+      Tags:
+        Name: AL2023-Infrastructure
+
+  # SNS Topic for Image Builder notifications
+  ImageBuilderSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: ImageBuilderNotifications
+      Tags:
+        - Key: Name
+          Value: ImageBuilderNotifications
+
+  # Distribution Configuration
+  DistributionConfiguration:
+    Type: AWS::ImageBuilder::DistributionConfiguration
+    Properties:
+      Name: AL2023-Distribution
+      Distributions:
+        - Region: !Ref AWS::Region
+          AmiDistributionConfiguration:
+            Name: 'AL2023-CustomImage-{{ imagebuilder:buildDate }}'
+            Description: 'Custom AL2023 AMI created by Image Builder'
+            AmiTags:
+              Name: 'AL2023-CustomImage'
+              BuildDate: '{{ imagebuilder:buildDate }}'
+              SourceAMI: '{{ imagebuilder:parentImage }}'
+      Tags:
+        Name: AL2023-Distribution
+
+  # Image Pipeline
+  ImagePipeline:
+    Type: AWS::ImageBuilder::ImagePipeline
+    Properties:
+      Name: AL2023-Pipeline
+      Description: Pipeline to build AL2023 custom AMI
+      ImageRecipeArn: !Ref ImageRecipe
+      InfrastructureConfigurationArn: !Ref InfrastructureConfiguration
+      DistributionConfigurationArn: !Ref DistributionConfiguration
+      Status: ENABLED
+      Schedule:
+        ScheduleExpression: 'cron(0 0 * * MON)'
+        PipelineExecutionStartCondition: EXPRESSION_MATCH_AND_DEPENDENCY_UPDATES_AVAILABLE
+      Tags:
+        Name: AL2023-Pipeline
+
+  # EventBridge Rule to trigger Lambda on successful image creation
+  ImageBuilderEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: ImageBuilder-Success-Trigger
+      Description: Trigger Lambda when Image Builder successfully creates an image
+      EventPattern:
+        source:
+          - aws.imagebuilder
+        detail-type:
+          - EC2 Image Builder Image State Change
+        detail:
+          state:
+            status:
+              - AVAILABLE
+          imageBuildVersionArn:
+            - prefix: !GetAtt ImagePipeline.Arn
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt UpdateLaunchTemplateFunction.Arn
+          Id: LambdaTarget
+
+Outputs:
+  ImagePipelineArn:
+    Description: ARN of the Image Builder Pipeline
+    Value: !GetAtt ImagePipeline.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-PipelineArn'
+  
+  LambdaFunctionArn:
+    Description: ARN of the Lambda function that updates launch template
+    Value: !GetAtt UpdateLaunchTemplateFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaArn'
+  
+  ImageBuilderSNSTopicArn:
+    Description: SNS Topic for Image Builder notifications
+    Value: !Ref ImageBuilderSNSTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-SNSTopicArn'
+  
+  InfrastructureConfigurationArn:
+    Description: Infrastructure Configuration ARN
+    Value: !GetAtt InfrastructureConfiguration.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-InfrastructureArn'

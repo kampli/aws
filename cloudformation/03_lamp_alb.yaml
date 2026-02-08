@@ -1,0 +1,213 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ALB - LAMP scale-to-zero architecture
+
+Parameters:
+  Version:
+    Type: String
+    Default: "1"
+  Environment:
+    Type: String
+    Default: dev
+
+  PublicSubnets:
+    Type: CommaDelimitedList
+    Description: List of public subnet IDs
+
+  AlbSecurityGroup:
+    Type: String
+    Description: Security group ID for the ALB
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: App VPC ID
+
+  DbVpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: DB VPC ID
+
+  VpcCIDR:
+    Type: String
+
+  DBVPCCIDR:
+    Type: String
+
+  DomainName:
+    Type: String
+    Default: kampli.co.uk
+
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID for kampli.co.uk (e.g. Z123ABCXYZ)
+
+Resources:
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: LAMP-ApplicationLoadBalancer
+      Subnets: !Ref PublicSubnets
+      SecurityGroups:
+        - !Ref AlbSecurityGroup
+      Scheme: internet-facing
+      Type: application
+
+  HttpsTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "lamp-stack-alb-https-tg"
+      VpcId: !Ref VpcId
+      Port: 443
+      Protocol: HTTPS
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: "80"
+      HealthCheckPath: /
+      Matcher:
+        HttpCode: 200-399
+
+
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "lamp-stack-alb-http-tg"
+      VpcId: !Ref VpcId
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Matcher:
+        HttpCode: 200-399
+      # Targets:
+      #   - Id: !Ref LampInstance
+      #     Port: 80
+
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: "443"
+            StatusCode: HTTP_301
+      # DefaultActions:
+      #   - Type: forward
+      #     TargetGroupArn: !Ref TargetGroup
+      # DefaultActions:
+      #   - Type: forward
+      #     TargetGroupArn: !Ref HttpsTargetGroup
+
+
+
+  ####################
+  # Certificate
+  ####################
+
+  ALBCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      SubjectAlternativeNames:
+        - !Sub "www.${DomainName}"
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+          # HostedZoneName: !Sub "${DomainName}."
+        - DomainName: !Sub "www.${DomainName}"
+          HostedZoneId: !Ref HostedZoneId
+          # HostedZoneName: !Sub "${DomainName}."
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref ALBCertificate
+        # - CertificateArn: arn:aws:acm:eu-west-2:725673811658:certificate/ce0f8756-332a-49c1-ab9a-a4956ceb560b
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+        # - Order: 2
+        #   Type: forward
+        #   TargetGroupArn: !Ref WakeLambdaTargetGroup
+
+  AlbDnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      # HostedZoneName: !Sub "${DomainName}."
+      Name: !Sub "${DomainName}."
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApplicationLoadBalancer.DNSName
+        HostedZoneId: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+        EvaluateTargetHealth: true
+
+
+  AlbDnsRecordWWW:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      # HostedZoneName: !Sub "${DomainName}."
+      Name: !Sub "www.${DomainName}."
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApplicationLoadBalancer.DNSName
+        HostedZoneId: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+        EvaluateTargetHealth: true
+
+
+  HttpsListenerWwwRedirect:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref HttpsListener
+      Priority: 1
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values:
+              - !Sub "www.${DomainName}"
+      Actions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Host: !Ref DomainName
+            Port: "443"
+            Path: "/#{path}"
+            Query: "#{query}"
+            StatusCode: HTTP_301
+
+
+  CertificatesList:
+    Type: AWS::ElasticLoadBalancingV2::ListenerCertificate
+    Properties: 
+      Certificates: 
+        - CertificateArn: arn:aws:acm:eu-west-2:725673811658:certificate/ce0f8756-332a-49c1-ab9a-a4956ceb560b
+      ListenerArn: !Ref HttpsListener
+
+
+Outputs:
+  TargetGroup:
+    Value: !Ref TargetGroup
+  
+  HttpsListener:
+    Value: !Ref HttpsListener
+
+  ALBFullName:
+    Value: !GetAtt ApplicationLoadBalancer.LoadBalancerFullName
+
+  ALBPublicDNS:
+    Description: Public DNS of the LAMP Stack EC2
+    # Value: !GetAtt LampInstance.PublicDnsName
+    Value: !GetAtt ApplicationLoadBalancer.DNSName

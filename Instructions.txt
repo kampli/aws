@@ -263,6 +263,11 @@ aws cloudformation validate-template \
   --template-body file://cloudformation/00_lamp_root.yaml 
 
 
+aws cloudformation package \
+  --template-file cloudformation/00_lamp_root.yaml \
+  --s3-bucket lamp-lambda-artifacts-725673811658-eu-west-2 \
+  --output-template-file cloudformation/packaged.yaml
+
 aws cloudformation validate-template \
   --template-body file://cloudformation/packaged.yaml
 
@@ -301,3 +306,172 @@ cfn/
 ├── database.yaml            # MariaDB EC2, volumes, ENI
 ├── lambdas.yaml             # all Lambda functions + layers
 └── automation.yaml          # EventBridge, alarms, permissions
+
+
+METRICALARMS    True    
+arn:aws:cloudwatch:eu-west-2:725673811658:alarm:lamp-stack-AutoLambdaStack-UTW8CABYKRVA-IdleRequestAlarm-m4bZNLjbCNRL  2026-01-26T16:33:47.775000+00:00        Stop ASG when idle             lamp-stack-AutoLambdaStack-UTW8CABYKRVA-IdleRequestAlarm-m4bZNLjbCNRL   LessThanThreshold              1       RequestCount    AWS/ApplicationELB      120     Threshold Crossed: 1 datapoint [1.0 (26/01/26 17:11:00)] was not less than the threshold (1.0).        {"version":"1.0","queryDate":"2026-01-26T17:15:17.621+0000","startDate":"2026-01-26T17:11:00.000+0000","statistic":"Sum","period":120,"recentDatapoints":[1.0],"threshold":1.0,"evaluatedDatapoints":[{"timestamp":"2026-01-26T17:11:00.000+0000","sampleCount":26.0,"value":1.0}]}  2026-01-26T17:15:17.622000+00:00        2026-01-26T17:15:17.622000+00:00       OK      Sum     1.0     breaching
+
+aws events put-events \
+  --entries '[
+    {
+      "Source": "custom.imagebuilder",
+      "DetailType": "EC2 Image Builder Image State Change",
+      "Detail": "{\"state\":{\"status\":\"AVAILABLE\"}}",
+      "EventBusName": "lamp-ec2-image"
+    }
+  ]'
+
+
+
+
+{
+    "version": "0",
+    "id": "9f58e9f0-d4ef-578c-7363-0792f4dd8108",
+    "detail-type": "EC2 Image Builder Image State Change",
+    "source": "aws.imagebuilder",
+    "account": "725673811658",
+    "time": "2026-01-30T17:06:20Z",
+    "region": "eu-west-2",
+    "resources": [
+        "arn:aws:imagebuilder:eu-west-2:725673811658:image/lamp-ec2-web-recipe/1.0.0/8"
+    ],
+    "detail": {
+        "previous-state": {
+            "status": "INTEGRATING"
+        },
+        "state": {
+            "status": "AVAILABLE"
+        }
+    }
+}
+
+
+
+
+aws events put-events \
+  --entries '[
+    {
+      "Source": "custom.imagebuilder",
+      "Resources": ["arn:aws:imagebuilder:eu-west-2:725673811658:image/lamp-ec2-web-recipe/1.0.0/8"],
+      "DetailType": "EC2 Image Builder Image State Change",
+      "Detail": "{\"previous-state\": {\"status\": \"INTEGRATING\"},\"state\":{\"status\":\"AVAILABLE\"}}",
+      "EventBusName": "lamp-ec2-image"
+    }
+  ]'
+
+
+
+
+
+  ImageBuilderEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: ImageBuilderEventRule-2
+      Description: Trigger AutoStopLambda when Image Builder AMI is AVAILABLE
+      EventBusName: default
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.imagebuilder
+        detail-type:
+          - EC2 Image Builder Image State Change
+        detail:
+          previous-state:
+            status:
+              # - INTEGRATING
+              - CREATING
+          state:
+            status:
+              - BUILDING
+              # - AVAILABLE
+      Targets:
+        - Id: AutoRefreshLambdaTarget
+          Arn: !GetAtt AutoRefreshLambda.Arn
+
+
+  ImageBuilderEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: ImageBuilderEventRule-2
+      Description: Trigger AutoStopLambda when Image Builder AMI is AVAILABLE
+      EventBusName: default
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.imagebuilder
+        region: 
+          - !Ref AWS::Region
+        resources:
+          - !Sub arn:aws:imagebuilder:${AWS::Region}:${AWS::AccountId}:image/lamp-ec2-web-recipe/1.0.0/*
+        detail-type:
+          - EC2 Image Builder Image State Change
+        detail:
+          previous-state:
+            status:
+              - INTEGRATING
+          state:
+            status:
+              - AVAILABLE
+      Targets:
+        - Id: AutoRefreshLambdaTarget
+          Arn: !GetAtt AutoRefreshLambda.Arn
+
+
+
+
+{
+  "Sid": "AllowLaunchTemplateUse",
+  "Effect": "Allow",
+  "Action": "autoscaling:UpdateAutoScalingGroup",
+  "Resource": "*",
+  "Condition": {
+    "ArnEquals": {
+      "autoscaling:LaunchTemplateARN": "arn:aws:ec2:eu-west-2:725673811658:launch-template/lt-03f820b10e5d0abfd"
+    }
+  }
+}
+
+amazon q fix! 
+invalid action.
+
+"Action": "ec2:UseLaunchTemplate",
+
+ami-05ed9482f90a0c27c
+5:10
+Launch template
+Edit
+Launch template
+lt-06a8293e276f3f35b
+lamp-stack-ec2-LaunchTemplate
+AMI ID
+ami-05ed9482f90a0c27c
+Instance type
+t2.micro
+Owner
+arn:aws:sts::725673811658:assumed-role/lamp-stack-AutoLambdaStack--AutoStartStopLambdaRole-s16lhqXD0Qqp/AutoRefreshLambda
+Version
+Latest
+Security groups
+
+though console able to select Latest.
+
+
+Launch template
+Edit
+Launch template
+lt-06a8293e276f3f35b
+lamp-stack-ec2-LaunchTemplate
+AMI ID
+ami-0f7695d649df69422
+
+
+
+AMI ID
+
+ami-0f7695d649df69422 (lamp-ec2-web-ami)
+Monitoring
+detailed
+Platform details
+Linux/UNIX
+AMI name
+lamp-ec2-we

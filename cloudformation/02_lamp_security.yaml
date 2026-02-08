@@ -1,0 +1,235 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Security stack – Security Groups and IAM roles
+
+Parameters:
+  Version:
+    Type: String
+    Default: "1"
+  Environment:
+    Type: String
+    Default: dev
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: App VPC ID
+
+  DbVpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: DB VPC ID
+
+  VpcCIDR:
+    Type: String
+
+  DBVPCCIDR:
+    Type: String
+Resources:
+
+  WebInstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Web tier
+      Tags:
+        - Key: Name
+          Value: WebEc2-SG      
+
+  DBInstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref DbVpcId
+      GroupDescription: MariaDB 
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          # SourceSecurityGroupId: !Ref Ec2SecurityGroup
+          CidrIp: !Ref VpcCIDR   # ✅ Web VPC CIDR
+          # SourceSecurityGroupId: !Ref LambdaDBSecurityGroup
+        # - IpProtocol: tcp
+        #   FromPort: 3000
+        #   ToPort: 3000
+        #   SourceSecurityGroupId: !Ref WebInstanceSG
+
+  SystemsManagerEC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LAMP-SystemsManagerEC2Role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: CloudFormationReadOnlyForCfnTools
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:GetTemplate
+                Resource: "*"
+        - PolicyName: AllowInvokeAllLambda
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowInvokeAnyLambdaInAccount
+                Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*
+        # - PolicyName: AllowLaunchTemplateUsage
+        #   PolicyDocument:
+        #     Version: "2012-10-17"
+        #     Statement:
+        #       - Sid: AllowUseOfLaunchTemplate
+        #         Effect: Allow
+        #         Action:
+        #           - ec2:DescribeLaunchTemplates
+        #           - ec2:DescribeLaunchTemplateVersions
+        #         Resource: arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:launch-template/*
+      Tags:
+        - Key: Name
+          Value: SystemsManagerEC2Role
+
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: LAMP-SystemsManagerEC2Profile
+      Roles:
+        - !Ref SystemsManagerEC2Role
+
+  ### Security Group ###
+  PrivateInstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Allow HTTP from ALB or Bastion
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref VpcCIDR
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref VpcCIDR
+
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Enable HTTP access from internet
+      GroupName: AllowHttpFromEverywhere
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: "80"
+          ToPort: "80"
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  Ec2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Enable HTTP access from within VPC
+      GroupName: AllowHttpFromALB
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: "80"
+          ToPort: "80"
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+
+
+  LambdaDBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: Allow Lambda to access MariaDB
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: 3306
+        ToPort: 3306
+        CidrIp: !Ref DBVPCCIDR
+
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: LAMP-Lambda-ExecutionRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 's3:*'
+                Resource: '*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AmazonRDSFullAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+
+Outputs:
+  WebInstanceSG: 
+    Value: !Ref WebInstanceSG
+  
+  DBInstanceSG:
+    Value: !Ref DBInstanceSG
+  
+  SystemsManagerEC2Role:
+    Value: !Ref SystemsManagerEC2Role
+  
+  SystemsManagerEC2RoleArn:
+    Value: !GetAtt SystemsManagerEC2Role.Arn
+  
+  EC2InstanceProfile:
+    Value: !Ref EC2InstanceProfile
+  
+  PrivateInstanceSG:
+    Value: !Ref PrivateInstanceSG
+  
+  AlbSecurityGroup:
+    Value: !Ref AlbSecurityGroup
+  
+  Ec2SecurityGroup:
+    Value: !Ref Ec2SecurityGroup
+  
+  LambdaDBSecurityGroup:
+    Value: !Ref LambdaDBSecurityGroup
+  
+  LambdaExecutionRole:
+    Value: !Ref LambdaExecutionRole
+  
+  LambdaExecutionRoleArn:
+    Value: !GetAtt LambdaExecutionRole.Arn
+
+
+

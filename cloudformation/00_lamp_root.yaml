@@ -1,0 +1,197 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Root stack - LAMP scale-to-zero architecture
+
+Parameters:
+  Version:
+    Type: String
+    Default: "1"
+  Environment:
+    Type: String
+    Default: dev
+
+  ArtifactsBucket:
+    Type: String
+    Default: lamp-lambda-artifacts-725673811658-eu-west-2
+    Description: S3 bucket containing nested CloudFormation templates and Lambda artifacts
+
+  ArtifactsPrefix:
+    Type: String
+    Default: cloudformation
+    Description: S3 prefix for CloudFormation templates (e.g. cfn/, cfn/v1/, dev/cfn/)
+
+  DomainName:
+    Type: String
+    Default: kampli.co.uk
+
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID for kampli.co.uk (e.g. Z123ABCXYZ)
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair for SSH access
+
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t3.micro
+    Description: EC2 instance type
+
+  DBRootPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Default: rootkampli00
+    Description: mysql DB root password
+  
+  WordPressDBName:
+    Type: String
+    Default: wordpressdb
+
+  WordPressDBUser:
+    Type: String
+    Default: wpuser
+
+  WordPressDBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Default: wpkampli00
+
+  LambdaArtifactsS3BucketName:
+    Type: String
+    Default: lamp-lambda-artifacts-725673811658-eu-west-2
+    Description: "Existing bucket name or new bucket name"
+
+Resources:
+  NetworkStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 01_lamp_network.yaml
+      # TemplateURL: !Sub >
+      #   https://s3.amazonaws.com/${ArtifactsBucket}/${ArtifactsPrefix}/01_lamp_network.yaml
+      Parameters:
+        Environment: !Ref Environment
+        Version: !Ref Version
+  
+  Security:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 02_lamp_security.yaml
+      Parameters:
+        Environment: !Ref Environment
+        Version: !Ref Version
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        DbVpcId: !GetAtt NetworkStack.Outputs.DbVpcId
+        VpcCIDR: !GetAtt NetworkStack.Outputs.VpcCIDR
+        DBVPCCIDR: !GetAtt NetworkStack.Outputs.DBVPCCIDR
+        
+        
+  AlbStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 03_lamp_alb.yaml
+      # TemplateURL: !Sub >
+      #   https://s3.amazonaws.com/${ArtifactsBucket}/${ArtifactsPrefix}/alb.yaml
+      Parameters:
+        Environment: !Ref Environment
+        Version: !Ref Version
+        PublicSubnets: !GetAtt NetworkStack.Outputs.PublicSubnets
+        AlbSecurityGroup: !GetAtt Security.Outputs.AlbSecurityGroup
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        DbVpcId: !GetAtt NetworkStack.Outputs.DbVpcId
+        VpcCIDR: !GetAtt NetworkStack.Outputs.VpcCIDR
+        DBVPCCIDR: !GetAtt NetworkStack.Outputs.DBVPCCIDR
+        DomainName: !Ref DomainName
+        HostedZoneId: !Ref HostedZoneId
+
+
+  ComputeStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 04_lamp_compute.yaml
+      # TemplateURL: !Sub >
+      #   https://s3.amazonaws.com/${ArtifactsBucket}/${ArtifactsPrefix}/compute.yaml
+      Parameters:
+        Environment: !Ref Environment
+        Version: !Ref Version
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref KeyName
+        EC2InstanceProfile: !GetAtt Security.Outputs.EC2InstanceProfile
+        Ec2SecurityGroup: !GetAtt Security.Outputs.Ec2SecurityGroup
+        DBPrivateSubnet1: !GetAtt NetworkStack.Outputs.DBPrivateSubnet1
+        DBInstanceSG: !GetAtt Security.Outputs.DBInstanceSG
+        # VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        PrivateSubnets: !GetAtt NetworkStack.Outputs.PrivateSubnets
+        PrivateSubnet1: !GetAtt NetworkStack.Outputs.PrivateSubnet1
+        PrivateSubnet2: !GetAtt NetworkStack.Outputs.PrivateSubnet2
+        PrivateSubnet3: !GetAtt NetworkStack.Outputs.PrivateSubnet3
+        TargetGroup: !GetAtt AlbStack.Outputs.TargetGroup
+        DBRootPassword: !Ref DBRootPassword
+        WordPressDBName: !Ref WordPressDBName
+        WordPressDBUser: !Ref WordPressDBUser
+        WordPressDBPassword: !Ref WordPressDBPassword
+
+
+  # DatabaseStack:
+  #   Type: AWS::CloudFormation::Stack
+  #   Properties:
+  #     TemplateURL: !Sub >
+  #       https://s3.amazonaws.com/${ArtifactsBucket}/${ArtifactsPrefix}/database.yaml
+  #     Parameters:
+  #       VpcId: !GetAtt NetworkStack.Outputs.DbVpcId
+
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 06_lamp_lambda.yaml
+      Parameters:
+        Environment: !Ref Environment
+        Version: !Ref Version
+        LambdaArtifactsS3BucketName: !Ref LambdaArtifactsS3BucketName
+        LambdaExecutionRoleArn: !GetAtt Security.Outputs.LambdaExecutionRoleArn
+        DBNIPrimaryPrivateIpAddress: !GetAtt ComputeStack.Outputs.DBNIPrimaryPrivateIpAddress
+        DBRootPassword: !Ref DBRootPassword
+        WordPressDBName: !Ref WordPressDBName
+        WordPressDBUser: !Ref WordPressDBUser
+        WordPressDBPassword: !Ref WordPressDBPassword
+        PrivateSubnet1: !GetAtt NetworkStack.Outputs.PrivateSubnet1
+        PrivateSubnet2: !GetAtt NetworkStack.Outputs.PrivateSubnet2
+        PrivateSubnet3: !GetAtt NetworkStack.Outputs.PrivateSubnet3
+        PrivateSubnets: !GetAtt NetworkStack.Outputs.PrivateSubnets
+        LambdaDBSecurityGroup: !GetAtt Security.Outputs.LambdaDBSecurityGroup
+
+
+  AutoLambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: 07_lamp_automation_lambda.yaml
+      Parameters:
+        Environment: !Ref Environment
+        Version: !Ref Version
+        PymysqlLayer: !GetAtt LambdaStack.Outputs.PymysqlLayer
+        LambdaArtifactsS3BucketName: !Ref LambdaArtifactsS3BucketName
+        HttpsListener: !GetAtt AlbStack.Outputs.HttpsListener
+        ALBFullName: !GetAtt AlbStack.Outputs.ALBFullName
+        SystemsManagerEC2RoleArn: !GetAtt Security.Outputs.SystemsManagerEC2RoleArn
+
+
+Outputs:
+  LoadBalancerName:
+    Description: LoadBalancerName
+    Value: !GetAtt AlbStack.Outputs.ALBFullName
+
+  ALBPublicDNS:
+    Description: Public DNS of the LAMP Stack EC2
+    Value: !GetAtt AlbStack.Outputs.ALBPublicDNS
+
+  WebsiteURL:
+    Description: URL of the LAMP Stack
+    Value: !Sub "http://${AlbStack.Outputs.ALBPublicDNS}"
+
+  DBPrivateIP:
+    Description: Stable private IP of MariaDB
+    Value: !GetAtt ComputeStack.Outputs.DBNIPrimaryPrivateIpAddress
+

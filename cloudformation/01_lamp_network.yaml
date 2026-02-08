@@ -1,0 +1,518 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Network stack – VPCs, subnets, routing, peering
+
+Parameters:
+  Version:
+    Type: String
+    Description: Dummy parameter to force stack updates
+  Environment:
+    Type: String
+    Default: dev
+
+  VpcCIDR:
+    Type: String
+    Default: 10.0.0.0/16
+    
+  DBVPCCIDR:
+    Type: String
+    Default: 10.1.0.0/16
+
+
+  PublicSubnetCIDRs:
+    Type: CommaDelimitedList
+    Default: 10.0.1.0/24,10.0.2.0/24,10.0.3.0/24
+
+  PrivateSubnetCIDRs:
+    Type: CommaDelimitedList
+    Default: 10.0.101.0/24,10.0.102.0/24,10.0.103.0/24
+
+Resources:
+
+  VPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: "Name"
+          Value: "LAMP Stack - VPC"
+
+ 
+  PublicSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [0, !Ref PublicSubnetCIDRs]
+      MapPublicIpOnLaunch: true
+      VpcId:
+        Ref: "VPC"
+      Tags:
+        - Key: "Name"
+          Value: "Public Subnet AZ A"
+      AvailabilityZone:
+        Fn::Select:
+          - "0"
+          - Fn::GetAZs:
+              Ref: "AWS::Region"
+
+  PublicSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [1, !Ref PublicSubnetCIDRs]
+      MapPublicIpOnLaunch: true
+      VpcId:
+        Ref: "VPC"
+      Tags:
+        - Key: "Name"
+          Value: "Public Subnet AZ B"
+      AvailabilityZone:
+        Fn::Select:
+          - "1"
+          - Fn::GetAZs:
+              Ref: "AWS::Region"
+
+  PublicSubnet3:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [2, !Ref PublicSubnetCIDRs]
+      MapPublicIpOnLaunch: true
+      VpcId:
+        Ref: "VPC"
+      Tags:
+        - Key: "Name"
+          Value: "Public Subnet AZ C"
+      AvailabilityZone:
+        Fn::Select:
+          - "2"
+          - Fn::GetAZs:
+              Ref: "AWS::Region"
+
+  PrivateSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [0, !Ref PrivateSubnetCIDRs]
+      MapPublicIpOnLaunch: false
+      VpcId:
+        Ref: "VPC"
+      Tags:
+        - Key: "Name"
+          Value: "Private Subnet AZ A"
+      AvailabilityZone:
+        Fn::Select:
+          - "0"
+          - Fn::GetAZs:
+              Ref: "AWS::Region"
+
+  PrivateSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [1, !Ref PrivateSubnetCIDRs]
+      MapPublicIpOnLaunch: false
+      VpcId:
+        Ref: "VPC"
+      Tags:
+        - Key: "Name"
+          Value: "Private Subnet AZ B"
+      AvailabilityZone:
+        Fn::Select:
+          - "1"
+          - Fn::GetAZs:
+              Ref: "AWS::Region"
+
+  PrivateSubnet3:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      CidrBlock: !Select [2, !Ref PrivateSubnetCIDRs]
+      MapPublicIpOnLaunch: false
+      VpcId:
+        Ref: "VPC"
+      Tags:
+        - Key: "Name"
+          Value: "Private Subnet AZ C"
+      AvailabilityZone:
+        Fn::Select:
+          - "2"
+          - Fn::GetAZs:
+              Ref: "AWS::Region"
+
+  RouteTablePublic:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId:
+        Ref: "VPC"
+      Tags:
+        - Key: "Name"
+          Value: "Public Route Table"
+
+  RouteTablePublicAssociation1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId:
+        Ref: "RouteTablePublic"
+      SubnetId:
+        Ref: "PublicSubnet1"
+
+  RouteTablePublicAssociation2:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId:
+        Ref: "RouteTablePublic"
+      SubnetId:
+        Ref: "PublicSubnet2"
+
+  RouteTablePublicAssociation3:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId:
+        Ref: "RouteTablePublic"
+      SubnetId:
+        Ref: "PublicSubnet3"
+
+  RouteTablePublicRoute0:
+    Type: "AWS::EC2::Route"
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      RouteTableId:
+        Ref: "RouteTablePublic"
+      GatewayId:
+        Ref: "Igw"
+
+  RouteTablePrivate1:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId:
+        Ref: "VPC"
+      Tags:
+        - Key: "Name"
+          Value: "Private Route Table A"
+
+  RouteTablePrivate1Association1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId:
+        Ref: "RouteTablePrivate1"
+      SubnetId:
+        Ref: "PrivateSubnet1"
+
+  RouteTablePrivate1Route0:
+    Type: "AWS::EC2::Route"
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      RouteTableId:
+        Ref: "RouteTablePrivate1"
+      NatGatewayId:
+        Ref: "NatGw1"
+
+  RouteTablePrivate2:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId:
+        Ref: "VPC"
+      Tags:
+        - Key: "Name"
+          Value: "Private Route Table B"
+
+  RouteTablePrivate2Association1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId:
+        Ref: "RouteTablePrivate2"
+      SubnetId:
+        Ref: "PrivateSubnet2"
+
+  RouteTablePrivate2Route0:
+    Type: "AWS::EC2::Route"
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      RouteTableId:
+        Ref: "RouteTablePrivate2"
+      NatGatewayId:
+        Ref: "NatGw1"
+
+  RouteTablePrivate3:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId:
+        Ref: "VPC"
+      Tags:
+        - Key: "Name"
+          Value: "Private Route Table C"
+
+  RouteTablePrivate3Association1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId:
+        Ref: "RouteTablePrivate3"
+      SubnetId:
+        Ref: "PrivateSubnet3"
+
+  RouteTablePrivate3Route0:
+    Type: "AWS::EC2::Route"
+    Properties:
+      DestinationCidrBlock: "0.0.0.0/0"
+      RouteTableId:
+        Ref: "RouteTablePrivate3"
+      NatGatewayId:
+        Ref: "NatGw1"
+
+
+
+  Igw:
+    Type: "AWS::EC2::InternetGateway"
+    Properties: { }
+
+  IGWAttachment:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      VpcId:
+        Ref: "VPC"
+      InternetGatewayId:
+        Ref: "Igw"
+
+  NatGw1:
+    Type: "AWS::EC2::NatGateway"
+    Properties:
+      SubnetId:
+        Ref: "PublicSubnet1"
+      AllocationId:
+        Fn::GetAtt:
+          - "NatGw1ElasticIP"
+          - "AllocationId"
+      Tags:
+        - Key: "Name"
+          Value: "NAT GW A"
+
+  NatGw1ElasticIP:
+    Type: "AWS::EC2::EIP"
+    Properties:
+      Domain: "vpc"
+      Tags:
+        - Key: "Name"
+          Value: "NAT GW EIP"
+
+
+  DBVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref DBVPCCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: "DB VPC"
+
+  DBPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DBVPC
+      CidrBlock: 10.1.101.0/24
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - "0"
+          - Fn::GetAZs:
+              Ref: "AWS::Region"
+      Tags:
+        - Key: Name
+          Value: "DB Private Subnet AZ A"
+
+  DBPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DBVPC
+      CidrBlock: 10.1.102.0/24
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - "1"
+          - Fn::GetAZs:
+              Ref: "AWS::Region"
+      Tags:
+        - Key: Name
+          Value: "DB Private Subnet AZ B"
+
+  DBPrivateSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DBVPC
+      CidrBlock: 10.1.103.0/24
+      MapPublicIpOnLaunch: false
+      AvailabilityZone:
+        Fn::Select:
+          - "2"
+          - Fn::GetAZs:
+              Ref: "AWS::Region"
+      Tags:
+        - Key: Name
+          Value: "DB Private Subnet AZ B"
+
+  WebToDBPeering:
+    Type: AWS::EC2::VPCPeeringConnection
+    Properties:
+      VpcId: !Ref VPC
+      PeerVpcId: !Ref DBVPC
+      Tags:
+        - Key: Name
+          Value: "Web-to-DB Peering"
+
+  DBRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DBVPC
+      Tags:
+        - Key: Name
+          Value: "DB Private Route Table"
+
+  DBSubnetRoute1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBPrivateSubnet1
+      RouteTableId: !Ref DBRouteTable
+
+  DBSubnetRoute2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBPrivateSubnet2
+      RouteTableId: !Ref DBRouteTable
+
+  DBSubnetRoute3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBPrivateSubnet3
+      RouteTableId: !Ref DBRouteTable
+
+ 
+
+  WebToDBRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate1
+      DestinationCidrBlock: !Ref DBVPCCIDR
+      VpcPeeringConnectionId: !Ref WebToDBPeering
+
+  WebToDBRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate2
+      DestinationCidrBlock: !Ref DBVPCCIDR
+      VpcPeeringConnectionId: !Ref WebToDBPeering
+
+  WebToDBRoute3:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTablePrivate3
+      DestinationCidrBlock: !Ref DBVPCCIDR
+      VpcPeeringConnectionId: !Ref WebToDBPeering
+
+  DBToWebRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DBRouteTable
+      DestinationCidrBlock: !Ref VpcCIDR
+      VpcPeeringConnectionId: !Ref WebToDBPeering
+
+  DBInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: DB-VPC-IGW
+
+  DBIGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref DBVPC
+      InternetGatewayId: !Ref DBInternetGateway
+
+
+  DBPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref DBVPC
+      CidrBlock: 10.1.1.0/24
+      MapPublicIpOnLaunch: true
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: !Ref AWS::Region
+      Tags:
+        - Key: Name
+          Value: DB-Public-Subnet
+
+  DBPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DBVPC
+      Tags:
+        - Key: Name
+          Value: DB-Public-RT
+
+  DBPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: DBIGWAttachment
+    Properties:
+      RouteTableId: !Ref DBPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref DBInternetGateway
+
+  DBPublicSubnetRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DBPublicSubnet
+      RouteTableId: !Ref DBPublicRouteTable
+
+
+  DBNatEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: DB-NAT-EIP
+
+  DBNatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      SubnetId: !Ref DBPublicSubnet
+      AllocationId: !GetAtt DBNatEIP.AllocationId
+      Tags:
+        - Key: Name
+          Value: DB-NAT-Gateway
+
+  DBPrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DBRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref DBNatGateway
+
+
+
+Outputs:
+  VpcId:
+    Value: !Ref VPC
+
+  DbVpcId:
+    Value: !Ref DBVPC
+
+  PublicSubnets:
+    Value: !Join [ ",", [ !Ref PublicSubnet1, !Ref PublicSubnet2, !Ref PublicSubnet3 ] ]
+
+  PrivateSubnets:
+    Value: !Join [ ",", [ !Ref PrivateSubnet1, !Ref PrivateSubnet2, !Ref PrivateSubnet3 ] ]
+  
+  PrivateSubnet1:
+    Value: !Ref PrivateSubnet1
+  
+  PrivateSubnet2:
+    Value: !Ref PrivateSubnet2
+  
+  PrivateSubnet3:
+    Value: !Ref PrivateSubnet3
+  
+  VpcCIDR:
+    Value: !Ref VpcCIDR
+  DBVPCCIDR:
+    Value: !Ref DBVPCCIDR
+  DBPrivateSubnet1:
+    Value: !Ref DBPrivateSubnet1
