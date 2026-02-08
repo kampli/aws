@@ -1,5 +1,12 @@
+from enum import auto
 import boto3
 import json
+import os
+from datetime import datetime
+
+LAUNCH_TEMPLATE_NAME = "lamp-stack-ec2-LaunchTemplate"
+ASG_NAME= "LampAutoScalingGroup"
+IMAGE_PIPELINE_NAME = "lamp-ec2-web"
 
 
 ec2 = boto3.client('ec2')
@@ -46,25 +53,77 @@ def get_latest_ami_from_pipeline(pipeline_name: str) -> str:
     # Return first AMI (single-region pipeline)
     return latest["outputResources"]["amis"][0]["image"]
 
+def get_launch_template_id(name: str) -> str:
+    resp = ec2.describe_launch_templates(
+        LaunchTemplateNames=[name]
+    )
+    return resp["LaunchTemplates"][0]["LaunchTemplateId"]
+
 
 def handler(event, context):
- 
-    latest_ami_id = get_latest_ami_from_pipeline(pipeline_name='lamp-ec2-web')
+    
+    print("Received event:", event)
+
+    # 1️⃣ Launch Template
+    lt_id = get_launch_template_id(LAUNCH_TEMPLATE_NAME)
+    print("LaunchTemplateId:", lt_id)
+
+    pipeline_name = 'lamp-ec2-web'
+    
+    latest_ami_id = get_latest_ami_from_pipeline(pipeline_name)
 
 
     print(f"Latest AMI from {pipeline_name}: {latest_ami_id}")
 
-    # Restore ASG capacity
-    asg.update_auto_scaling_group(
-        AutoScalingGroupName='LampAutoScalingGroup',
-        MinSize=2,
-        MaxSize=3,
-        DesiredCapacity=2
+
+    new_version = ec2.create_launch_template_version(
+        LaunchTemplateId=lt_id,
+        SourceVersion="$Latest",
+        LaunchTemplateData={
+            "ImageId": latest_ami_id
+        }
+    )["LaunchTemplateVersion"]["VersionNumber"]
+
+    print("New LT version:", new_version)
+
+    # 4️⃣ Set default
+    ec2.modify_launch_template(
+        LaunchTemplateId=lt_id,
+        DefaultVersion=str(new_version)
     )
-    # Restore ASG capacity
-    asg.update_auto_scaling_group(
-        AutoScalingGroupName='LampAutoScalingGroup',
-        MinSize=1,
-        MaxSize=3,
-        DesiredCapacity=1
+
+    
+    #Below code to udpate the latest launch template version.
+    #This doesnt work due to permission issues.
+    #Work around is to udpate the launch template version in ASG to latest version in the console.
+
+    asg.update_auto_scaling_group(AutoScalingGroupName=ASG_NAME,LaunchTemplate={
+        'LaunchTemplateId': lt_id,
+        'Version': str(new_version)})
+    
+
+
+    resp = asg.start_instance_refresh(
+        AutoScalingGroupName=ASG_NAME,
+        Preferences={
+            "MinHealthyPercentage": 100,
+            "InstanceWarmup": 300
+        },
+        Strategy="Rolling"
     )
+
+
+    # # Restore ASG capacity
+    # asg.update_auto_scaling_group(
+    #     AutoScalingGroupName='LampAutoScalingGroup',
+    #     MinSize=2,
+    #     MaxSize=3,
+    #     DesiredCapacity=2
+    # )
+    # # Restore ASG capacity
+    # asg.update_auto_scaling_group(
+    #     AutoScalingGroupName='LampAutoScalingGroup',
+    #     MinSize=1,
+    #     MaxSize=3,
+    #     DesiredCapacity=1
+    # )
