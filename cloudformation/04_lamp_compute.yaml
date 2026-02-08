@@ -53,7 +53,19 @@ Parameters:
   PrivateSubnet3:
     Type: String
     Description: PrivateSubnet3
+
+  PublicSubnet1:
+    Type: String
+    Description: PublicSubnet1
   
+  PublicSubnet2:
+    Type: String
+    Description: PublicSubnet2
+  
+  PublicSubnet3:
+    Type: String
+    Description: PublicSubnet3
+
   TargetGroup:
     Type: String
     Description: TargetGroup
@@ -569,9 +581,9 @@ Resources:
       MinSize: 0
       VPCZoneIdentifier: 
       # !Ref PrivateSubnets
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-        - !Ref PrivateSubnet3
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+        - !Ref PublicSubnet3
       LaunchTemplate:
         LaunchTemplateId: !Ref LampLaunchTemplate
         # Version: "$Latest"
@@ -619,7 +631,7 @@ Resources:
       - DBNetworkInterface
     CreationPolicy:
       ResourceSignal:
-        Timeout: PT30M
+        Timeout: PT120M
     Metadata:
       AWS::CloudFormation::Init:
         configSets:

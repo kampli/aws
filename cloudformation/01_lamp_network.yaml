@@ -17,6 +17,9 @@ Parameters:
     Type: String
     Default: 10.1.0.0/16
 
+  DBPrivateSubnet1:
+    Type: String
+    Description: DBPrivateSubnet1
 
   PublicSubnetCIDRs:
     Type: CommaDelimitedList
@@ -194,14 +197,14 @@ Resources:
       SubnetId:
         Ref: "PrivateSubnet1"
 
-  RouteTablePrivate1Route0:
-    Type: "AWS::EC2::Route"
-    Properties:
-      DestinationCidrBlock: "0.0.0.0/0"
-      RouteTableId:
-        Ref: "RouteTablePrivate1"
-      NatGatewayId:
-        Ref: "NatGw1"
+  # RouteTablePrivate1Route0:
+  #   Type: "AWS::EC2::Route"
+  #   Properties:
+  #     DestinationCidrBlock: "0.0.0.0/0"
+  #     RouteTableId:
+  #       Ref: "RouteTablePrivate1"
+  #     NatGatewayId:
+  #       Ref: "NatGw1"
 
   RouteTablePrivate2:
     Type: "AWS::EC2::RouteTable"
@@ -220,14 +223,14 @@ Resources:
       SubnetId:
         Ref: "PrivateSubnet2"
 
-  RouteTablePrivate2Route0:
-    Type: "AWS::EC2::Route"
-    Properties:
-      DestinationCidrBlock: "0.0.0.0/0"
-      RouteTableId:
-        Ref: "RouteTablePrivate2"
-      NatGatewayId:
-        Ref: "NatGw1"
+  # RouteTablePrivate2Route0:
+  #   Type: "AWS::EC2::Route"
+  #   Properties:
+  #     DestinationCidrBlock: "0.0.0.0/0"
+  #     RouteTableId:
+  #       Ref: "RouteTablePrivate2"
+  #     NatGatewayId:
+  #       Ref: "NatGw1"
 
   RouteTablePrivate3:
     Type: "AWS::EC2::RouteTable"
@@ -246,14 +249,14 @@ Resources:
       SubnetId:
         Ref: "PrivateSubnet3"
 
-  RouteTablePrivate3Route0:
-    Type: "AWS::EC2::Route"
-    Properties:
-      DestinationCidrBlock: "0.0.0.0/0"
-      RouteTableId:
-        Ref: "RouteTablePrivate3"
-      NatGatewayId:
-        Ref: "NatGw1"
+  # RouteTablePrivate3Route0:
+  #   Type: "AWS::EC2::Route"
+  #   Properties:
+  #     DestinationCidrBlock: "0.0.0.0/0"
+  #     RouteTableId:
+  #       Ref: "RouteTablePrivate3"
+  #     NatGatewayId:
+  #       Ref: "NatGw1"
 
 
 
@@ -269,26 +272,26 @@ Resources:
       InternetGatewayId:
         Ref: "Igw"
 
-  NatGw1:
-    Type: "AWS::EC2::NatGateway"
-    Properties:
-      SubnetId:
-        Ref: "PublicSubnet1"
-      AllocationId:
-        Fn::GetAtt:
-          - "NatGw1ElasticIP"
-          - "AllocationId"
-      Tags:
-        - Key: "Name"
-          Value: "NAT GW A"
+  # NatGw1:
+  #   Type: "AWS::EC2::NatGateway"
+  #   Properties:
+  #     SubnetId:
+  #       Ref: "PublicSubnet1"
+  #     AllocationId:
+  #       Fn::GetAtt:
+  #         - "NatGw1ElasticIP"
+  #         - "AllocationId"
+  #     Tags:
+  #       - Key: "Name"
+  #         Value: "NAT GW A"
 
-  NatGw1ElasticIP:
-    Type: "AWS::EC2::EIP"
-    Properties:
-      Domain: "vpc"
-      Tags:
-        - Key: "Name"
-          Value: "NAT GW EIP"
+  # NatGw1ElasticIP:
+  #   Type: "AWS::EC2::EIP"
+  #   Properties:
+  #     Domain: "vpc"
+  #     Tags:
+  #       - Key: "Name"
+  #         Value: "NAT GW EIP"
 
 
   DBVPC:
@@ -411,80 +414,80 @@ Resources:
       DestinationCidrBlock: !Ref VpcCIDR
       VpcPeeringConnectionId: !Ref WebToDBPeering
 
-  DBInternetGateway:
-    Type: AWS::EC2::InternetGateway
-    Properties:
-      Tags:
-        - Key: Name
-          Value: DB-VPC-IGW
+  # DBInternetGateway:
+  #   Type: AWS::EC2::InternetGateway
+  #   Properties:
+  #     Tags:
+  #       - Key: Name
+  #         Value: DB-VPC-IGW
 
-  DBIGWAttachment:
-    Type: AWS::EC2::VPCGatewayAttachment
-    Properties:
-      VpcId: !Ref DBVPC
-      InternetGatewayId: !Ref DBInternetGateway
-
-
-  DBPublicSubnet:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref DBVPC
-      CidrBlock: 10.1.1.0/24
-      MapPublicIpOnLaunch: true
-      AvailabilityZone:
-        Fn::Select:
-          - 0
-          - Fn::GetAZs: !Ref AWS::Region
-      Tags:
-        - Key: Name
-          Value: DB-Public-Subnet
-
-  DBPublicRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref DBVPC
-      Tags:
-        - Key: Name
-          Value: DB-Public-RT
-
-  DBPublicRoute:
-    Type: AWS::EC2::Route
-    DependsOn: DBIGWAttachment
-    Properties:
-      RouteTableId: !Ref DBPublicRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref DBInternetGateway
-
-  DBPublicSubnetRouteAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref DBPublicSubnet
-      RouteTableId: !Ref DBPublicRouteTable
+  # DBIGWAttachment:
+  #   Type: AWS::EC2::VPCGatewayAttachment
+  #   Properties:
+  #     VpcId: !Ref DBVPC
+  #     InternetGatewayId: !Ref DBInternetGateway
 
 
-  DBNatEIP:
-    Type: AWS::EC2::EIP
-    Properties:
-      Domain: vpc
-      Tags:
-        - Key: Name
-          Value: DB-NAT-EIP
+  # DBPublicSubnet:
+  #   Type: AWS::EC2::Subnet
+  #   Properties:
+  #     VpcId: !Ref DBVPC
+  #     CidrBlock: 10.1.1.0/24
+  #     MapPublicIpOnLaunch: true
+  #     AvailabilityZone:
+  #       Fn::Select:
+  #         - 0
+  #         - Fn::GetAZs: !Ref AWS::Region
+  #     Tags:
+  #       - Key: Name
+  #         Value: DB-Public-Subnet
 
-  DBNatGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      SubnetId: !Ref DBPublicSubnet
-      AllocationId: !GetAtt DBNatEIP.AllocationId
-      Tags:
-        - Key: Name
-          Value: DB-NAT-Gateway
+  # DBPublicRouteTable:
+  #   Type: AWS::EC2::RouteTable
+  #   Properties:
+  #     VpcId: !Ref DBVPC
+  #     Tags:
+  #       - Key: Name
+  #         Value: DB-Public-RT
 
-  DBPrivateDefaultRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref DBRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref DBNatGateway
+  # DBPublicRoute:
+  #   Type: AWS::EC2::Route
+  #   DependsOn: DBIGWAttachment
+  #   Properties:
+  #     RouteTableId: !Ref DBPublicRouteTable
+  #     DestinationCidrBlock: 0.0.0.0/0
+  #     GatewayId: !Ref DBInternetGateway
+
+  # DBPublicSubnetRouteAssociation:
+  #   Type: AWS::EC2::SubnetRouteTableAssociation
+  #   Properties:
+  #     SubnetId: !Ref DBPublicSubnet
+  #     RouteTableId: !Ref DBPublicRouteTable
+
+
+  # DBNatEIP:
+  #   Type: AWS::EC2::EIP
+  #   Properties:
+  #     Domain: vpc
+  #     Tags:
+  #       - Key: Name
+  #         Value: DB-NAT-EIP
+
+  # DBNatGateway:
+  #   Type: AWS::EC2::NatGateway
+  #   Properties:
+  #     SubnetId: !Ref DBPublicSubnet
+  #     AllocationId: !GetAtt DBNatEIP.AllocationId
+  #     Tags:
+  #       - Key: Name
+  #         Value: DB-NAT-Gateway
+
+  # DBPrivateDefaultRoute:
+  #   Type: AWS::EC2::Route
+  #   Properties:
+  #     RouteTableId: !Ref DBRouteTable
+  #     DestinationCidrBlock: 0.0.0.0/0
+  #     NatGatewayId: !Ref DBNatGateway
 
 
 
@@ -509,7 +512,16 @@ Outputs:
   
   PrivateSubnet3:
     Value: !Ref PrivateSubnet3
+
+  PublicSubnet1:
+    Value: !Ref PublicSubnet1
   
+  PublicSubnet2:
+    Value: !Ref PublicSubnet2
+  
+  PublicSubnet3:
+    Value: !Ref PublicSubnet3
+
   VpcCIDR:
     Value: !Ref VpcCIDR
   DBVPCCIDR:

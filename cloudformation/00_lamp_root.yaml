@@ -87,6 +87,7 @@ Resources:
         DbVpcId: !GetAtt NetworkStack.Outputs.DbVpcId
         VpcCIDR: !GetAtt NetworkStack.Outputs.VpcCIDR
         DBVPCCIDR: !GetAtt NetworkStack.Outputs.DBVPCCIDR
+        DBPrivateSubnet1: !GetAtt NetworkStack.Outputs.DBPrivateSubnet1
         
         
   AlbStack:
@@ -128,6 +129,9 @@ Resources:
         PrivateSubnet1: !GetAtt NetworkStack.Outputs.PrivateSubnet1
         PrivateSubnet2: !GetAtt NetworkStack.Outputs.PrivateSubnet2
         PrivateSubnet3: !GetAtt NetworkStack.Outputs.PrivateSubnet3
+        PublicSubnet1: !GetAtt NetworkStack.Outputs.PublicSubnet1
+        PublicSubnet2: !GetAtt NetworkStack.Outputs.PublicSubnet2
+        PublicSubnet3: !GetAtt NetworkStack.Outputs.PublicSubnet3
         TargetGroup: !GetAtt AlbStack.Outputs.TargetGroup
         DBRootPassword: !Ref DBRootPassword
         WordPressDBName: !Ref WordPressDBName
@@ -160,7 +164,7 @@ Resources:
         PrivateSubnet1: !GetAtt NetworkStack.Outputs.PrivateSubnet1
         PrivateSubnet2: !GetAtt NetworkStack.Outputs.PrivateSubnet2
         PrivateSubnet3: !GetAtt NetworkStack.Outputs.PrivateSubnet3
-        PrivateSubnets: !GetAtt NetworkStack.Outputs.PrivateSubnets
+        PrivateSubnets: !GetAtt NetworkStack.Outputs.PrivateSubnets        
         LambdaDBSecurityGroup: !GetAtt Security.Outputs.LambdaDBSecurityGroup
 
 

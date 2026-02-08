@@ -16,7 +16,9 @@ Parameters:
   DbVpcId:
     Type: AWS::EC2::VPC::Id
     Description: DB VPC ID
-
+  DBPrivateSubnet1:
+    Type: String
+    Description: DBPrivateSubnet1
   VpcCIDR:
     Type: String
 
@@ -44,11 +46,27 @@ Resources:
           ToPort: 3306
           # SourceSecurityGroupId: !Ref Ec2SecurityGroup
           CidrIp: !Ref VpcCIDR   # ✅ Web VPC CIDR
-          # SourceSecurityGroupId: !Ref LambdaDBSecurityGroup
-        # - IpProtocol: tcp
-        #   FromPort: 3000
-        #   ToPort: 3000
-        #   SourceSecurityGroupId: !Ref WebInstanceSG
+        # SSH from Web VPC (or EICE endpoint)
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref VpcCIDR          
+      # Allow ALL outbound traffic
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          
+
+
+  DBEC2InstanceConnectEndpoint:
+    Type: "AWS::EC2::InstanceConnectEndpoint"
+    Properties:
+      PreserveClientIp: false
+      SecurityGroupIds:
+        - !Ref DBInstanceSG
+      SubnetId: !Ref DBPrivateSubnet1
+
+
 
   SystemsManagerEC2Role:
     Type: AWS::IAM::Role

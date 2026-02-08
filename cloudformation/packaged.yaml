@@ -56,7 +56,7 @@ Resources:
   NetworkStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/9e48cb337f60e909af0650e8ba129b1e.template
+      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/6b68f9b67276112ff46c84cfd6ee83a9.template
       Parameters:
         Environment:
           Ref: Environment
@@ -65,7 +65,7 @@ Resources:
   Security:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/9fa5fa99151faa227af31c09fa15aad6.template
+      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/b7cb6174f5e817941c63da5e84ad827c.template
       Parameters:
         Environment:
           Ref: Environment
@@ -87,6 +87,10 @@ Resources:
           Fn::GetAtt:
           - NetworkStack
           - Outputs.DBVPCCIDR
+        DBPrivateSubnet1:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.DBPrivateSubnet1
   AlbStack:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -127,7 +131,7 @@ Resources:
   ComputeStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/44581d8fc7dbd704f8badc093344517c.template
+      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/8bfc482a2ca89ff9be1302cf68511547.template
       Parameters:
         Environment:
           Ref: Environment
@@ -169,6 +173,18 @@ Resources:
           Fn::GetAtt:
           - NetworkStack
           - Outputs.PrivateSubnet3
+        PublicSubnet1:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.PublicSubnet1
+        PublicSubnet2:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.PublicSubnet2
+        PublicSubnet3:
+          Fn::GetAtt:
+          - NetworkStack
+          - Outputs.PublicSubnet3
         TargetGroup:
           Fn::GetAtt:
           - AlbStack
