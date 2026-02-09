@@ -88,6 +88,8 @@ Resources:
         VpcCIDR: !GetAtt NetworkStack.Outputs.VpcCIDR
         DBVPCCIDR: !GetAtt NetworkStack.Outputs.DBVPCCIDR
         DBPrivateSubnet1: !GetAtt NetworkStack.Outputs.DBPrivateSubnet1
+        DBPrivateSubnet2: !GetAtt NetworkStack.Outputs.DBPrivateSubnet2
+        DBPrivateSubnet3: !GetAtt NetworkStack.Outputs.DBPrivateSubnet3
         
         
   AlbStack:
