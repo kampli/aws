@@ -734,6 +734,9 @@ Resources:
                   GRANT ALL PRIVILEGES ON ${WordPressDBName}.* TO '${WordPressDBUser}'@'%';
                   FLUSH PRIVILEGES;
                 "
+                systemctl restart mariadb
+                systemctl enable mariadb
+                systemctl status mariadb
           services:
             systemd:
               mariadb:

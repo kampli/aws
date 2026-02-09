@@ -17,9 +17,7 @@ Parameters:
     Type: String
     Default: 10.1.0.0/16
 
-  DBPrivateSubnet1:
-    Type: String
-    Description: DBPrivateSubnet1
+
 
   PublicSubnetCIDRs:
     Type: CommaDelimitedList
@@ -384,6 +382,15 @@ Resources:
       SubnetId: !Ref DBPrivateSubnet3
       RouteTableId: !Ref DBRouteTable
 
+
+  DBS3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref DBVPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref DBRouteTable
  
 
   WebToDBRoute1:
@@ -528,3 +535,9 @@ Outputs:
     Value: !Ref DBVPCCIDR
   DBPrivateSubnet1:
     Value: !Ref DBPrivateSubnet1
+
+  DBPrivateSubnet2:
+    Value: !Ref DBPrivateSubnet2
+
+  DBPrivateSubnet3:
+    Value: !Ref DBPrivateSubnet3

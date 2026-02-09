@@ -19,6 +19,15 @@ Parameters:
   DBPrivateSubnet1:
     Type: String
     Description: DBPrivateSubnet1
+
+  DBPrivateSubnet2:
+    Type: String
+    Description: DBPrivateSubnet2
+
+  DBPrivateSubnet3:
+    Type: String
+    Description: DBPrivateSubnet3
+
   VpcCIDR:
     Type: String
 
@@ -73,7 +82,7 @@ Resources:
   DBVPCEndpointSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      VpcId: !Ref DBVPC
+      VpcId: !Ref DbVpcId
       GroupDescription: Allow DB instances to access VPC interface endpoints
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -88,22 +97,22 @@ Resources:
   DBCloudFormationEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
-    VpcId: !Ref DBVPC
-    ServiceName: !Sub "com.amazonaws.${AWS::Region}.cloudformation"
-    VpcEndpointType: Interface
-    PrivateDnsEnabled: true
-    SubnetIds:
-      - !Ref DBPrivateSubnet1
-      - !Ref DBPrivateSubnet2
-      - !Ref DBPrivateSubnet3
-    SecurityGroupIds:
-      - !Ref DBVPCEndpointSG
+      VpcId: !Ref DbVpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.cloudformation"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref DBPrivateSubnet1
+        - !Ref DBPrivateSubnet2
+        - !Ref DBPrivateSubnet3
+      SecurityGroupIds:
+        - !Ref DBVPCEndpointSG
 
 
   DBSTSEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
-      VpcId: !Ref DBVPC
+      VpcId: !Ref DbVpcId
       ServiceName: !Sub "com.amazonaws.${AWS::Region}.sts"
       VpcEndpointType: Interface
       PrivateDnsEnabled: true
@@ -117,7 +126,7 @@ Resources:
   DBEC2Endpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
-      VpcId: !Ref DBVPC
+      VpcId: !Ref DbVpcId
       ServiceName: !Sub "com.amazonaws.${AWS::Region}.ec2"
       VpcEndpointType: Interface
       PrivateDnsEnabled: true
