@@ -50,12 +50,13 @@ Resources:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: !Ref VpcCIDR          
+          CidrIp: 0.0.0.0/0          
       # Allow ALL outbound traffic
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
           
+
 
 
   DBEC2InstanceConnectEndpoint:
@@ -65,7 +66,67 @@ Resources:
       SecurityGroupIds:
         - !Ref DBInstanceSG
       SubnetId: !Ref DBPrivateSubnet1
+      Tags:
+        - Key: Name
+          Value: DBEC2InstanceConnectEndpoint
 
+  DBVPCEndpointSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref DBVPC
+      GroupDescription: Allow DB instances to access VPC interface endpoints
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref DBInstanceSG
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+
+  DBCloudFormationEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+    VpcId: !Ref DBVPC
+    ServiceName: !Sub "com.amazonaws.${AWS::Region}.cloudformation"
+    VpcEndpointType: Interface
+    PrivateDnsEnabled: true
+    SubnetIds:
+      - !Ref DBPrivateSubnet1
+      - !Ref DBPrivateSubnet2
+      - !Ref DBPrivateSubnet3
+    SecurityGroupIds:
+      - !Ref DBVPCEndpointSG
+
+
+  DBSTSEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref DBVPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sts"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref DBPrivateSubnet1
+        - !Ref DBPrivateSubnet2
+        - !Ref DBPrivateSubnet3
+      SecurityGroupIds:
+        - !Ref DBVPCEndpointSG
+
+  DBEC2Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref DBVPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.ec2"
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref DBPrivateSubnet1
+        - !Ref DBPrivateSubnet2
+        - !Ref DBPrivateSubnet3
+      SecurityGroupIds:
+        - !Ref DBVPCEndpointSG
 
 
   SystemsManagerEC2Role:
