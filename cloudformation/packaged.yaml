@@ -139,7 +139,7 @@ Resources:
   ComputeStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/8bfc482a2ca89ff9be1302cf68511547.template
+      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/23fe4b1afd8c62b5a311f0001b39662c.template
       Parameters:
         Environment:
           Ref: Environment
@@ -255,7 +255,7 @@ Resources:
   AutoLambdaStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/23f12a374282f66c165553fa33ba438d.template
+      TemplateURL: https://s3.eu-west-2.amazonaws.com/lamp-lambda-artifacts-725673811658-eu-west-2/1ee36b51f2122392629ebdcc08acc64a.template
       Parameters:
         Environment:
           Ref: Environment

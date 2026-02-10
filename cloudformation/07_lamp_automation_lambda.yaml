@@ -179,7 +179,7 @@ Resources:
       Runtime: python3.11
       Handler: lambda_auto_asgwake.handler
       Role: !GetAtt AutoStartStopLambdaRole.Arn
-      Timeout: 60
+      Timeout: 300
       Layers:
         - !Ref PymysqlLayer
       Code:
